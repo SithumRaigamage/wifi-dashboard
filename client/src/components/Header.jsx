@@ -4,12 +4,21 @@ import { Badge, Button } from './ui/primitives.jsx';
 import { PipWidgetButton } from './PipWidget.jsx';
 import { fmtDuration } from '../lib/utils.js';
 
+function getWifiGeneration(phyMode, band) {
+  if (!phyMode) return 'Wi-Fi 6';
+  if (/be/i.test(phyMode)) return 'Wi-Fi 7';
+  if (/ax/i.test(phyMode)) return band && /6/i.test(band) ? 'Wi-Fi 6E' : 'Wi-Fi 6';
+  if (/ac/i.test(phyMode)) return 'Wi-Fi 5';
+  if (/n/i.test(phyMode)) return 'Wi-Fi 4';
+  return phyMode;
+}
+
 export function Header({ status, wifi, connectedSince, onKiosk, live }) {
 
   const [, tick] = useState(0);
   // Re-render each minute so the "connected for" duration stays current.
   useEffect(() => {
-    const id = setInterval(() => tick((n) => n + 1), 30000);
+    const id = setInterval(() => tick((n) => n + 1), 60000);
     return () => clearInterval(id);
   }, []);
   const uptimeSec = connectedSince ? Math.floor((Date.now() - connectedSince) / 1000) : null;
@@ -37,8 +46,15 @@ export function Header({ status, wifi, connectedSince, onKiosk, live }) {
       <div className="flex items-center gap-3">
         <Wifi className="h-6 w-6 text-[var(--text-primary)]" strokeWidth={1.75} />
         <div>
-          <div className="text-base font-medium leading-tight text-[var(--text-primary)]">
-            {ssid || (connected ? 'Wi-Fi' : 'Not connected')}
+          <div className="flex items-center gap-2">
+            <span className="text-base font-medium leading-tight text-[var(--text-primary)]">
+              {ssid || (connected ? 'Wi-Fi' : 'Not connected')}
+            </span>
+            {connected && (
+              <Badge variant="muted" className="text-[10px] font-bold py-0 text-blue-500 bg-blue-500/10">
+                {getWifiGeneration(wifi?.phyMode, wifi?.band)}
+              </Badge>
+            )}
           </div>
           <div className="text-[13px] text-[var(--text-muted)]">
             {subtitle || (connected ? 'SSID hidden by macOS' : 'Local network health')}
