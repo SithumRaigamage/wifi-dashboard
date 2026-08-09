@@ -1,6 +1,6 @@
 import { Card } from './ui/primitives.jsx';
 import { toMbps, fmtMbps } from '../lib/utils.js';
-import { rssiQuality } from '../lib/signal.js';
+import { rssiQuality, estimateDistance } from '../lib/signal.js';
 
 // Generic metric card: label (13/400 muted) → value (24/500) → sublabel (12/400 muted).
 function MetricCard({ label, value, unit, sublabel, valueColor }) {
@@ -14,7 +14,7 @@ function MetricCard({ label, value, unit, sublabel, valueColor }) {
         {value}
         {unit && <span className="ml-1 text-base text-[var(--text-muted)]">{unit}</span>}
       </div>
-      <div className="mt-1.5 text-xs text-[var(--text-muted)]">{sublabel ?? ' '}</div>
+      <div className="mt-1.5 text-xs text-[var(--text-muted)]">{sublabel ?? ' '}</div>
     </Card>
   );
 }
@@ -22,6 +22,8 @@ function MetricCard({ label, value, unit, sublabel, valueColor }) {
 export function MetricCards({ wifi, throughput, latency }) {
   const rssi = wifi?.rssi;
   const q = rssiQuality(rssi);
+  const freq = wifi?.band && /2\.4/i.test(wifi.band) ? 2400 : 5200;
+  const distance = estimateDistance(rssi, freq);
   const linkRate = wifi?.txRate ? `link ${wifi.txRate} Mbps` : null;
 
   const down = toMbps(throughput?.rxSec);
@@ -34,8 +36,9 @@ export function MetricCards({ wifi, throughput, latency }) {
         label="Signal"
         value={rssi != null ? rssi : '—'}
         unit={rssi != null ? 'dBm' : ''}
-        sublabel={q.label}
+        sublabel={`${q.label}${distance != null ? ` · ~${distance}m away` : ''}`}
       />
+
       <MetricCard
         label="Download"
         value={fmtMbps(down)}

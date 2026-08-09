@@ -9,6 +9,19 @@ export function rssiQuality(rssi) {
   return { key: 'weak', label: 'Weak', variant: 'danger' };
 }
 
+/**
+ * Estimates distance in meters from RSSI and frequency (MHz) using Path Loss Formula:
+ * d = 10 ^ ((27.55 - 20*log10(freqMhz) + abs(rssi)) / 20)
+ */
+export function estimateDistance(rssi, freqMhz = 5200) {
+  if (rssi == null) return null;
+  const absRssi = Math.abs(rssi);
+  const exp = (27.55 - (20 * Math.log10(freqMhz)) + absRssi) / 20;
+  const meters = Math.pow(10, exp);
+  return Math.max(0.5, Math.round(meters * 10) / 10);
+}
+
+
 // Backend already buckets device LAN RTT into strong/fair/weak/unknown; map to
 // the same label/variant vocabulary as WiFi quality.
 const QUALITY_META = {
