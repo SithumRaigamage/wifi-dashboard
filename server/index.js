@@ -265,10 +265,34 @@ function downtimeStat() {
   return { todayMs: downtime.todayMs + ongoing, down: Boolean(downtime.since) };
 }
 
+let lastBssid = null;
+let lastChannel = null;
+
 async function handleWifi(data) {
   latest.wifi = data;
   broadcast('wifi', data);
   const s = getSettings();
+
+  // Roaming / Access Point Handover detection
+  if (data.connected) {
+    if (lastBssid && data.bssid && data.bssid !== lastBssid) {
+      await emitEvent({
+        kind: 'wifi-roam',
+        severity: 'info',
+        message: `Wi-Fi roamed to AP ${data.bssid} (${data.band || '5GHz'}, Ch ${data.channel})`,
+        meta: { oldBssid: lastBssid, newBssid: data.bssid, channel: data.channel, band: data.band },
+      });
+    } else if (lastChannel && data.channel && data.channel !== lastChannel && !data.bssid) {
+      await emitEvent({
+        kind: 'wifi-roam',
+        severity: 'info',
+        message: `Wi-Fi switched channel to ${data.channel} (${data.band || ''})`,
+        meta: { oldChannel: lastChannel, newChannel: data.channel, band: data.band },
+      });
+    }
+    lastBssid = data.bssid || null;
+    lastChannel = data.channel || null;
+  }
 
   // Connect/disconnect edge detection + downtime accounting.
   if (!data.connected && alertState.connected) {
@@ -289,6 +313,7 @@ async function handleWifi(data) {
       });
     }
   }
+
 
   // Low-signal threshold (edge-triggered).
   if (data.rssi != null) {

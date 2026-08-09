@@ -37,6 +37,7 @@ async function getWifiInterface() {
 function parseAirportData(raw) {
   const result = {
     ssid: null,
+    bssid: null,
     phyMode: null,
     channel: null,
     band: null,
@@ -76,9 +77,13 @@ function parseAirportData(raw) {
     const val = kv[2].trim();
 
     switch (key) {
+      case 'BSSID':
+        result.bssid = val;
+        break;
       case 'PHY Mode':
         result.phyMode = val;
         break;
+
       case 'Channel': {
         // e.g. "36 (5GHz, 80MHz)"
         const cm = val.match(/^(\d+)\s*(?:\(([^,)]+)(?:,\s*([^)]+))?\))?/);
@@ -146,6 +151,7 @@ export async function getWifiStats() {
   return {
     iface,
     ssid: airport.ssid,
+    bssid: airport.bssid,
     connected: airport.rssi != null,
     rssi: airport.rssi,
     noise: airport.noise,
@@ -161,6 +167,7 @@ export async function getWifiStats() {
     security: airport.security,
     error: airport.error || null,
   };
+
 }
 
 // Throughput is cheap and fast — poll this more often than getWifiStats().
