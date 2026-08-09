@@ -18,8 +18,10 @@ export function FloorPlan({ live }) {
   const [roomName, setRoomName] = useState('Living Room');
   const canvasRef = useRef(null);
   const imageRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const currentRssi = live.wifi?.rssi ?? -65;
+
 
   useEffect(() => {
     try {
@@ -157,14 +159,26 @@ export function FloorPlan({ live }) {
           <p className="text-xs text-zinc-500 mt-1 max-w-sm">
             Upload a floor plan image (PNG/JPEG) to map signal readings across rooms and detect Wi-Fi dead zones.
           </p>
-          <label className="mt-4">
-            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-            <Button size="sm" variant="outline" className="cursor-pointer">
+          <div className="mt-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              className="cursor-pointer"
+            >
               Choose Image File
             </Button>
-          </label>
+          </div>
         </Card>
       ) : (
+
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Controls Side Panel */}
           <Card className="w-full lg:w-72 flex flex-col gap-4 shrink-0">
