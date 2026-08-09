@@ -48,6 +48,73 @@
   --series-latency: #9085e9;
 }
 
+.oled {
+  --surface-0: #000000;
+  --surface-1: #0d0d0d;
+  --surface-2: #171717;
+  --border: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.25);
+  --text-primary: #ffffff;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
+
+  --bg-success: #052e16;
+  --text-success: #4ade80;
+  --bg-warning: #451a03;
+  --text-warning: #fbbf24;
+  --bg-danger: #450a0a;
+  --text-danger: #f87171;
+
+  --series-download: #38bdf8;
+  --series-upload: #34d399;
+  --series-latency: #a78bfa;
+}
+
+.cyberpunk {
+  --surface-0: #090d16;
+  --surface-1: #111827;
+  --surface-2: #1f2937;
+  --border: rgba(56, 189, 248, 0.25);
+  --border-strong: rgba(244, 114, 182, 0.4);
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+
+  --bg-success: #064e3b;
+  --text-success: #34d399;
+  --bg-warning: #78350f;
+  --text-warning: #fbbf24;
+  --bg-danger: #831843;
+  --text-danger: #f472b6;
+
+  --series-download: #06b6d4;
+  --series-upload: #ec4899;
+  --series-latency: #8b5cf6;
+}
+
+.emerald {
+  --surface-0: #022c22;
+  --surface-1: #064e3b;
+  --surface-2: #047857;
+  --border: rgba(52, 211, 153, 0.2);
+  --border-strong: rgba(52, 211, 153, 0.35);
+  --text-primary: #ecfdf5;
+  --text-secondary: #a7f3d0;
+  --text-muted: #6ee7b7;
+
+  --bg-success: #065f46;
+  --text-success: #6ee7b7;
+  --bg-warning: #78350f;
+  --text-warning: #fde68a;
+  --bg-danger: #7f1d1d;
+  --text-danger: #fca5a5;
+
+  --series-download: #10b981;
+  --series-upload: #14b8a6;
+  --series-latency: #6366f1;
+}
+
+
 /* Follow the OS when the app hasn't forced a theme via .light/.dark. */
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {

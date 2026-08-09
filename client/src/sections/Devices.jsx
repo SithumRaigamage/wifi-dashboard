@@ -122,6 +122,7 @@ export function Devices({ live }) {
   const { devices, rescanDevices } = live;
   const [scanning, setScanning] = useState(false);
   const [filter, setFilter] = useState('All');
+  const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
   const [, setVersion] = useState(0); // bump to re-read localStorage after edits
   const bump = () => setVersion((n) => n + 1);
 
@@ -143,14 +144,41 @@ export function Devices({ live }) {
     <div>
       <SectionHeader
         right={
-          <Button size="sm" variant="outline" onClick={handleRescan} disabled={scanning}>
-            <RefreshCw className={`h-3 w-3 ${scanning ? 'animate-spin' : ''}`} />
-            {scanning ? 'Scanning' : 'Rescan'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md border border-[var(--border)] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                  viewMode === 'cards'
+                    ? 'bg-[var(--surface-2)] text-[var(--text-primary)] font-bold'
+                    : 'text-[var(--text-muted)] hover:bg-[var(--surface-1)]'
+                }`}
+              >
+                Cards
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-[var(--surface-2)] text-[var(--text-primary)] font-bold'
+                    : 'text-[var(--text-muted)] hover:bg-[var(--surface-1)]'
+                }`}
+              >
+                Table
+              </button>
+            </div>
+            <Button size="sm" variant="outline" onClick={handleRescan} disabled={scanning}>
+              <RefreshCw className={`h-3 w-3 ${scanning ? 'animate-spin' : ''}`} />
+              {scanning ? 'Scanning' : 'Rescan'}
+            </Button>
+          </div>
         }
       >
         Connected devices{devices?.count != null ? ` · ${devices.count}` : ''}
       </SectionHeader>
+
 
       {/* Network Topology Visual Graph */}
       <div className="mb-4">
@@ -177,12 +205,57 @@ export function Devices({ live }) {
       </div>
 
 
-      <div className="rounded-[var(--radius-card)] bg-[var(--surface-1)] px-4">
+      <div className="rounded-[var(--radius-card)] bg-[var(--surface-1)] px-4 py-2">
         {!filtered ? (
           <div className="py-6 text-center text-xs text-[var(--text-muted)]">Loading…</div>
         ) : filtered.length === 0 ? (
           <div className="py-6 text-center text-xs text-[var(--text-muted)]">
             {filter === 'All' ? 'No devices found.' : `No devices tagged “${filter}”.`}
+          </div>
+        ) : viewMode === 'table' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-[var(--text-muted)] font-medium">
+                  <th className="py-2.5 px-2">Device Name</th>
+                  <th className="py-2.5 px-2">IP Address</th>
+                  <th className="py-2.5 px-2">MAC Address</th>
+                  <th className="py-2.5 px-2">Vendor</th>
+                  <th className="py-2.5 px-2">Trust Status</th>
+                  <th className="py-2.5 px-2">Tag</th>
+                  <th className="py-2.5 px-2 text-right">Ping RTT</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {filtered.map((d) => {
+                  const meta = getDeviceMeta(d.mac);
+                  const isSelf = d.ip === selfIp;
+                  const isGateway = isGatewayIp(d.ip);
+                  const name = meta.name || autoName(d, isSelf, isGateway);
+                  return (
+                    <tr key={d.mac + d.ip} className="hover:bg-[var(--surface-2)] transition-colors">
+                      <td className="py-2.5 px-2 font-medium text-[var(--text-primary)]">
+                        {name} {isSelf && <span className="text-[var(--text-muted)] font-normal">(you)</span>}
+                      </td>
+                      <td className="py-2.5 px-2 font-mono text-[var(--text-muted)]">{d.ip}</td>
+                      <td className="py-2.5 px-2 font-mono text-[var(--text-muted)]">{d.mac}</td>
+                      <td className="py-2.5 px-2 text-[var(--text-muted)]">{d.vendor || '—'}</td>
+                      <td className="py-2.5 px-2">
+                        {meta.trust === 'trusted' && <Badge variant="success">Trusted</Badge>}
+                        {meta.trust === 'suspect' && <Badge variant="danger">Suspect</Badge>}
+                        {(!meta.trust || meta.trust === 'unknown') && <Badge variant="muted">Unknown</Badge>}
+                      </td>
+                      <td className="py-2.5 px-2">
+                        {meta.tag ? <Badge variant={TAG_VARIANT[meta.tag]}>{meta.tag}</Badge> : '—'}
+                      </td>
+                      <td className="py-2.5 px-2 text-right font-mono font-medium">
+                        {d.rttMs != null ? `${d.rttMs.toFixed(0)} ms` : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
           filtered.map((d, i) => (
@@ -197,6 +270,7 @@ export function Devices({ live }) {
           ))
         )}
       </div>
+
       <p className="mt-2 text-xs text-[var(--text-muted)]">
         Names and tags are saved locally in this browser, keyed by MAC address.
       </p>

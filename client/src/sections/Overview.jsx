@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Header } from '../components/Header.jsx';
 import { HealthGauge } from '../components/HealthGauge.jsx';
 import { MetricCards } from '../components/MetricCards.jsx';
@@ -6,10 +7,13 @@ import { LatencyTrend } from '../components/LatencyTrend.jsx';
 import { SpeedTestCard } from '../components/SpeedTestCard.jsx';
 import { UsageHistory } from '../components/UsageHistory.jsx';
 import { RecentDevices } from '../components/RecentDevices.jsx';
+import { Kiosk } from './Kiosk.jsx';
 
 // The original MVP dashboard, now the Overview section. Only mounts while
 // Overview is the active section, so its live charts stop when you navigate away.
 export function Overview({ live, onNavigate }) {
+  const [showKiosk, setShowKiosk] = useState(false);
+
   const {
     status,
     wifi,
@@ -26,7 +30,8 @@ export function Overview({ live, onNavigate }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <Header status={status} wifi={wifi} connectedSince={connectedSince} />
+      {showKiosk && <Kiosk live={live} onClose={() => setShowKiosk(false)} />}
+      <Header status={status} wifi={wifi} connectedSince={connectedSince} onKiosk={() => setShowKiosk(true)} />
       <HealthGauge live={live} />
       <MetricCards wifi={wifi} throughput={throughput} latency={latency} />
       <ThroughputChart history={throughputHistory} />
@@ -39,4 +44,5 @@ export function Overview({ live, onNavigate }) {
     </div>
   );
 }
+
 

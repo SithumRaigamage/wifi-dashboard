@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Card, SectionHeader, Input, Select, Toggle, Button } from '../components/ui/primitives.jsx';
+import { isAudioEnabled, setAudioEnabled } from '../lib/audioNotifier.js';
+import { getLanguage, setLanguage } from '../lib/i18n.js';
+
+
 
 // One labelled control row inside a settings card.
 function Row({ label, hint, control }) {
@@ -116,6 +120,8 @@ export function Settings({ live, theme, onTheme }) {
   const { settings, saveSettings } = live;
   const [pingHost, setPingHost] = useState('');
   const [webhook, setWebhook] = useState('');
+  const [soundOn, setSoundOn] = useState(isAudioEnabled);
+
 
   useEffect(() => {
     if (settings) {
@@ -184,17 +190,54 @@ export function Settings({ live, theme, onTheme }) {
           }
         />
         <Row
+          label="Sound effects"
+          hint="Play audio tone cues on disconnects & severe alert events."
+          control={
+            <Toggle
+              checked={soundOn}
+              onChange={(v) => {
+                setSoundOn(v);
+                setAudioEnabled(v);
+              }}
+            />
+          }
+        />
+        <Row
+          label="Language"
+          hint="Dashboard interface language."
+          control={
+            <Select
+              value={getLanguage()}
+              onChange={(e) => {
+                setLanguage(e.target.value);
+                window.location.reload();
+              }}
+            >
+              <option value="en">English</option>
+              <option value="es">Español (Spanish)</option>
+              <option value="de">Deutsch (German)</option>
+              <option value="fr">Français (French)</option>
+            </Select>
+          }
+        />
+        <Row
           label="Theme"
-          hint="Follows your OS by default."
+          hint="Choose visual theme palette."
           control={
             <Select value={theme} onChange={(e) => onTheme(e.target.value)}>
-              <option value="system">System</option>
+              <option value="system">System Default</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
+              <option value="oled">OLED Pitch Black</option>
+              <option value="cyberpunk">Cyberpunk Neon</option>
+              <option value="emerald">Emerald Forest</option>
             </Select>
           }
         />
       </Card>
+
+
+
 
       <Card className="py-0">
         <Row

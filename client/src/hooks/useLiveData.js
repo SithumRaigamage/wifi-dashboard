@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { playAlertSound } from '../lib/audioNotifier.js';
 
 const MAX_POINTS = 60; // rolling buffer length for live charts
 const MAX_EVENTS = 200;
+
 
 // Single WebSocket connection that dispatches messages by `type` into state.
 // Auto-reconnects with backoff. Also keeps rolling history buffers for charts,
@@ -57,6 +59,7 @@ export function useLiveData() {
         break;
       case 'event':
         setEvents((prev) => [data, ...prev].slice(0, MAX_EVENTS));
+        playAlertSound(data.severity);
         // Native Web Notification trigger if severity is warning or danger
         if (
           typeof window !== 'undefined' &&
@@ -74,6 +77,7 @@ export function useLiveData() {
           }
         }
         break;
+
 
       case 'events-cleared':
         setEvents([]);

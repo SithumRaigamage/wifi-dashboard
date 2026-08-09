@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Wifi } from 'lucide-react';
-import { Badge } from './ui/primitives.jsx';
+import { Wifi, Maximize2 } from 'lucide-react';
+import { Badge, Button } from './ui/primitives.jsx';
 import { fmtDuration } from '../lib/utils.js';
 
-export function Header({ status, wifi, connectedSince }) {
+export function Header({ status, wifi, connectedSince, onKiosk }) {
   const [, tick] = useState(0);
   // Re-render each minute so the "connected for" duration stays current.
   useEffect(() => {
@@ -43,18 +43,27 @@ export function Header({ status, wifi, connectedSince }) {
         </div>
       </div>
 
-      <Badge variant={badgeVariant} className="py-1">
-        <span className="relative flex h-1.5 w-1.5">
-          {live && connected && (
-            <span
-              className="absolute inline-flex h-full w-full rounded-full bg-current"
-              style={{ animation: 'livepulse 2s ease-in-out infinite' }}
-            />
-          )}
-          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
-        </span>
-        {badgeText}
-      </Badge>
+      <div className="flex items-center gap-2">
+        {onKiosk && (
+          <Button size="sm" variant="outline" onClick={onKiosk} title="Open Kiosk View">
+            <Maximize2 className="h-3.5 w-3.5" />
+            Kiosk
+          </Button>
+        )}
+        <Badge variant={badgeVariant} className="py-1">
+          <span className="relative flex h-1.5 w-1.5">
+            {live && connected && (
+              <span
+                className="absolute inline-flex h-full w-full rounded-full bg-current"
+                style={{ animation: 'livepulse 2s ease-in-out infinite' }}
+              />
+            )}
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
+          </span>
+          {badgeText}
+        </Badge>
+      </div>
     </header>
   );
 }
+

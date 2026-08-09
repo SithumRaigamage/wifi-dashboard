@@ -3,6 +3,7 @@ import { useLiveData } from './hooks/useLiveData.js';
 import { Sidebar } from './components/Sidebar.jsx';
 import { Overview } from './sections/Overview.jsx';
 import { Devices } from './sections/Devices.jsx';
+import { FloorPlan } from './sections/FloorPlan.jsx';
 import { History } from './sections/History.jsx';
 import { Diagnostics } from './sections/Diagnostics.jsx';
 import { Alerts } from './sections/Alerts.jsx';
@@ -12,12 +13,11 @@ const THEME_KEY = 'wifi-dashboard.theme';
 
 function applyTheme(theme) {
   const el = document.documentElement;
-  el.classList.remove('light', 'dark');
-  if (theme === 'light' || theme === 'dark') el.classList.add(theme);
-  // 'system' → no class, CSS falls back to prefers-color-scheme.
+  el.classList.remove('light', 'dark', 'oled', 'cyberpunk', 'emerald');
+  if (theme && theme !== 'system') el.classList.add(theme);
 }
 
-const SECTIONS = ['overview', 'devices', 'history', 'diagnostics', 'alerts', 'settings'];
+const SECTIONS = ['overview', 'devices', 'floorplan', 'history', 'diagnostics', 'alerts', 'settings'];
 
 function initialSection() {
   const q = new URLSearchParams(window.location.search).get('section');
@@ -55,11 +55,13 @@ export default function App() {
   const content = {
     overview: <Overview live={live} onNavigate={navigate} />,
     devices: <Devices live={live} />,
+    floorplan: <FloorPlan live={live} />,
     history: <History />,
     diagnostics: <Diagnostics live={live} />,
     alerts: <Alerts live={live} />,
     settings: <Settings live={live} theme={theme} onTheme={setTheme} />,
   }[section];
+
 
   return (
     <div className="flex min-h-full">

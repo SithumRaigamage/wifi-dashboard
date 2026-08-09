@@ -1,14 +1,18 @@
-import { Wifi, LayoutDashboard, MonitorSmartphone, LineChart, Stethoscope, Bell, Settings } from 'lucide-react';
+import { Wifi, LayoutDashboard, MonitorSmartphone, LineChart, Stethoscope, Bell, Settings, Map } from 'lucide-react';
 import { cn } from '../lib/utils.js';
+import { t } from '../lib/i18n.js';
 
 const NAV = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
-  { id: 'history', label: 'History', icon: LineChart },
-  { id: 'diagnostics', label: 'Diagnostics', icon: Stethoscope },
-  { id: 'alerts', label: 'Alerts', icon: Bell },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'overview', labelKey: 'overview', icon: LayoutDashboard },
+  { id: 'devices', labelKey: 'devices', icon: MonitorSmartphone },
+  { id: 'floorplan', labelKey: 'floorplan', icon: Map },
+  { id: 'history', labelKey: 'history', icon: LineChart },
+  { id: 'diagnostics', labelKey: 'diagnostics', icon: Stethoscope },
+  { id: 'alerts', labelKey: 'alerts', icon: Bell },
+  { id: 'settings', labelKey: 'settings', icon: Settings },
 ];
+
+
 
 export function Sidebar({ active, onSelect, ssid, unreadAlerts = 0 }) {
   return (
@@ -28,11 +32,12 @@ export function Sidebar({ active, onSelect, ssid, unreadAlerts = 0 }) {
         const Icon = item.icon;
         const isActive = active === item.id;
         const showBadge = item.id === 'alerts' && unreadAlerts > 0;
+        const label = t(item.labelKey);
         return (
           <button
             key={item.id}
             type="button"
-            title={item.label}
+            title={label}
             onClick={() => onSelect(item.id)}
             className={cn(
               'flex items-center gap-2.5 rounded-[var(--radius)] px-2 py-2 text-sm transition',
@@ -49,7 +54,7 @@ export function Sidebar({ active, onSelect, ssid, unreadAlerts = 0 }) {
                 <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[var(--text-danger)] md:hidden" />
               )}
             </span>
-            <span className="hidden md:inline">{item.label}</span>
+            <span className="hidden md:inline">{label}</span>
             {showBadge && (
               <span className="ml-auto hidden rounded-full bg-[var(--bg-danger)] px-1.5 text-xs text-[var(--text-danger)] md:inline">
                 {unreadAlerts}
@@ -58,6 +63,7 @@ export function Sidebar({ active, onSelect, ssid, unreadAlerts = 0 }) {
           </button>
         );
       })}
+
     </nav>
   );
 }
