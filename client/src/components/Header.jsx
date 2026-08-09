@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Wifi, Maximize2 } from 'lucide-react';
 import { Badge, Button } from './ui/primitives.jsx';
+import { PipWidgetButton } from './PipWidget.jsx';
 import { fmtDuration } from '../lib/utils.js';
 
-export function Header({ status, wifi, connectedSince, onKiosk }) {
+export function Header({ status, wifi, connectedSince, onKiosk, live }) {
+
   const [, tick] = useState(0);
   // Re-render each minute so the "connected for" duration stays current.
   useEffect(() => {
@@ -21,13 +23,14 @@ export function Header({ status, wifi, connectedSince, onKiosk }) {
   if (wifi?.channel != null) subParts.push(`channel ${wifi.channel}`);
   const subtitle = subParts.join(' · ');
 
-  const live = status === 'open';
-  const badgeVariant = !connected ? 'danger' : live ? 'success' : 'warning';
+  const isWsOpen = status === 'open';
+  const badgeVariant = !connected ? 'danger' : isWsOpen ? 'success' : 'warning';
   const badgeText = !connected
     ? 'Disconnected'
-    : live
+    : isWsOpen
       ? `Connected${uptimeSec ? ` · ${fmtDuration(uptimeSec)}` : ''}`
       : 'Reconnecting…';
+
 
   return (
     <header className="flex items-center justify-between gap-4">
@@ -44,6 +47,7 @@ export function Header({ status, wifi, connectedSince, onKiosk }) {
       </div>
 
       <div className="flex items-center gap-2">
+        {live && <PipWidgetButton live={live} />}
         {onKiosk && (
           <Button size="sm" variant="outline" onClick={onKiosk} title="Open Kiosk View">
             <Maximize2 className="h-3.5 w-3.5" />
@@ -51,6 +55,7 @@ export function Header({ status, wifi, connectedSince, onKiosk }) {
           </Button>
         )}
         <Badge variant={badgeVariant} className="py-1">
+
           <span className="relative flex h-1.5 w-1.5">
             {live && connected && (
               <span

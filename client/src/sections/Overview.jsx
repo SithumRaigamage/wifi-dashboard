@@ -110,8 +110,9 @@ export function Overview({ live, onNavigate }) {
       
       <div className="flex items-center justify-between">
         <div className="flex-1">
-          <Header status={status} wifi={wifi} connectedSince={connectedSince} onKiosk={() => setShowKiosk(true)} />
+          <Header status={status} wifi={wifi} connectedSince={connectedSince} onKiosk={() => setShowKiosk(true)} live={live} />
         </div>
+
         <div className="ml-3 shrink-0">
           <Button
             size="sm"
