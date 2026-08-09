@@ -3,6 +3,7 @@ import { Card, Button, SectionHeader } from '../components/ui/primitives.jsx';
 import { ChannelChart } from '../components/ChannelChart.jsx';
 import { Traceroute } from '../components/Traceroute.jsx';
 import { BssidInspector } from '../components/BssidInspector.jsx';
+import { SnrChart } from '../components/SnrChart.jsx';
 import { latencyVariant } from '../lib/signal.js';
 import { downloadDiagnosticReport } from '../lib/reportExporter.js';
 
@@ -65,10 +66,12 @@ export function Diagnostics({ live }) {
       </div>
 
       <BssidInspector wifi={live.wifi} />
+      <SnrChart live={live} />
       <ChannelChart />
       <Traceroute />
     </div>
   );
 }
+
 
 
