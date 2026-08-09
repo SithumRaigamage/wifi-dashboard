@@ -289,9 +289,17 @@ async function handleWifi(data) {
   broadcast('wifi', data);
   const s = getSettings();
 
-  // Roaming / Access Point Handover detection
+  // Roaming / Access Point Handover & DFS Radar Hop detection
   if (data.connected) {
-    if (lastBssid && data.bssid && data.bssid !== lastBssid) {
+    const isDfsChannel = (ch) => ch >= 52 && ch <= 144;
+    if (lastChannel && isDfsChannel(lastChannel) && data.channel && !isDfsChannel(data.channel)) {
+      await emitEvent({
+        kind: 'dfs-radar-hop',
+        severity: 'warning',
+        message: `DFS Radar interference detected! AP hopped from DFS Ch ${lastChannel} to non-DFS Ch ${data.channel}`,
+        meta: { oldChannel: lastChannel, newChannel: data.channel },
+      });
+    } else if (lastBssid && data.bssid && data.bssid !== lastBssid) {
       await emitEvent({
         kind: 'wifi-roam',
         severity: 'info',
@@ -309,6 +317,7 @@ async function handleWifi(data) {
     lastBssid = data.bssid || null;
     lastChannel = data.channel || null;
   }
+
 
   // Connect/disconnect edge detection + downtime accounting.
   if (!data.connected && alertState.connected) {
