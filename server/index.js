@@ -28,6 +28,8 @@ import {
 import { logEvent, listEvents, pruneEvents } from './lib/events.js';
 import { getSettings, updateSettings } from './lib/settings.js';
 import { sendAlertEmail, sendTestEmail } from './lib/email.js';
+import { detectRogueAccessPoints } from './lib/security.js';
+
 
 const PORT = process.env.PORT || 4000;
 const log = scoped('server');
@@ -173,11 +175,25 @@ app.post('/api/email/test', async (_req, res) => {
 // Diagnostics.
 app.get('/api/diagnostics/channels', async (_req, res) => {
   try {
-    res.json(await getChannelCongestion());
+    const data = await getChannelCongestion();
+    if (data && Array.isArray(data.networks) && latest.wifi) {
+      const rogues = detectRogueAccessPoints(latest.wifi, data.networks);
+      for (const rogue of rogues) {
+        await emitEvent({
+          kind: 'rogue-ap-detected',
+          severity: 'danger',
+          message: rogue.reason,
+          meta: rogue,
+        });
+      }
+      data.rogueAccessPoints = rogues;
+    }
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 app.get('/api/diagnostics/dns', async (_req, res) => {
   try {
     res.json(await getDnsTiming());
