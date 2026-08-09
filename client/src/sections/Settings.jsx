@@ -148,19 +148,21 @@ export function Settings({ live, theme, onTheme }) {
       <Card className="py-0">
         <Row
           label="Polling interval"
-          hint="How often throughput is sampled."
+          hint="How often throughput & live metrics are sampled."
           control={
             <Select
               value={String(settings.throughputInterval)}
               onChange={(e) => saveSettings({ throughputInterval: Number(e.target.value) })}
             >
+              <option value="500">500 ms (Fast)</option>
               <option value="1000">1 second</option>
-              <option value="2000">2 seconds</option>
+              <option value="2000">2 seconds (Default)</option>
               <option value="5000">5 seconds</option>
-              <option value="10000">10 seconds</option>
+              <option value="10000">10 seconds (Battery Saver)</option>
             </Select>
           }
         />
+
         <Row
           label="Ping target host"
           hint="Host used for latency + packet-loss."
