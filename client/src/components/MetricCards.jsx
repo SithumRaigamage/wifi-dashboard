@@ -54,8 +54,15 @@ export function MetricCards({ wifi, throughput, latency }) {
         label="Latency"
         value={ms != null ? ms.toFixed(0) : '—'}
         unit={ms != null ? 'ms' : ''}
-        sublabel={latency ? `${latency.packetLoss ?? 0}% packet loss` : null}
+        sublabel={
+          latency
+            ? `${latency.packetLoss ?? 0}% loss ${
+                latency.jitterMs != null ? `· ${latency.jitterMs}ms jitter` : ''
+              }`
+            : null
+        }
       />
     </div>
   );
 }
+

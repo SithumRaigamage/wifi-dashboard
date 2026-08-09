@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { RefreshCw, Check, Pencil } from 'lucide-react';
+import { RefreshCw, Check, Pencil, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { SectionHeader, Badge, Button } from '../components/ui/primitives.jsx';
+import { NetworkTopology } from '../components/NetworkTopology.jsx';
 import { qualityMeta } from '../lib/signal.js';
 import { deviceIcon, autoName, isGatewayIp } from '../lib/deviceMeta.js';
-import { getDeviceMeta, setDeviceName, cycleDeviceTag, TAGS } from '../lib/deviceStore.js';
+import { getDeviceMeta, setDeviceName, cycleDeviceTag, toggleDeviceTrust, TAGS } from '../lib/deviceStore.js';
 import { fmtRelative, fmtDateTime } from '../lib/utils.js';
 
 const TAG_VARIANT = { Work: 'success', Personal: 'warning', IoT: 'muted', Guest: 'danger' };
+
 
 function DeviceRow({ d, isSelf, isGateway, last, onChange }) {
   const meta = getDeviceMeta(d.mac);
@@ -78,6 +80,18 @@ function DeviceRow({ d, isSelf, isGateway, last, onChange }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            toggleDeviceTrust(d.mac);
+            onChange();
+          }}
+          title="Click to toggle device trust state"
+        >
+          {meta.trust === 'trusted' && <Badge variant="success">Trusted</Badge>}
+          {meta.trust === 'suspect' && <Badge variant="danger">Suspect</Badge>}
+          {(!meta.trust || meta.trust === 'unknown') && <Badge variant="muted">+ trust</Badge>}
+        </button>
         {d.randomizedMac && (
           <Badge variant="muted" title="Private/randomized MAC — likely a phone or laptop; no real vendor to look up">
             random MAC
@@ -138,6 +152,11 @@ export function Devices({ live }) {
         Connected devices{devices?.count != null ? ` · ${devices.count}` : ''}
       </SectionHeader>
 
+      {/* Network Topology Visual Graph */}
+      <div className="mb-4">
+        <NetworkTopology devices={list || []} />
+      </div>
+
       {/* Tag filter */}
       <div className="mb-2 flex flex-wrap gap-1.5">
         {['All', ...TAGS].map((t) => (
@@ -156,6 +175,7 @@ export function Devices({ live }) {
           </Button>
         ))}
       </div>
+
 
       <div className="rounded-[var(--radius-card)] bg-[var(--surface-1)] px-4">
         {!filtered ? (

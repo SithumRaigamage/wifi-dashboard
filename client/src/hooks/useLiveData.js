@@ -57,7 +57,24 @@ export function useLiveData() {
         break;
       case 'event':
         setEvents((prev) => [data, ...prev].slice(0, MAX_EVENTS));
+        // Native Web Notification trigger if severity is warning or danger
+        if (
+          typeof window !== 'undefined' &&
+          'Notification' in window &&
+          Notification.permission === 'granted' &&
+          (data.severity === 'warning' || data.severity === 'danger')
+        ) {
+          try {
+            new Notification(`WiFi Alert: ${data.kind.toUpperCase()}`, {
+              body: data.message,
+              icon: '/favicon.ico',
+            });
+          } catch {
+            /* notification blocked */
+          }
+        }
         break;
+
       case 'events-cleared':
         setEvents([]);
         break;

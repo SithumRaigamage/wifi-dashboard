@@ -1,7 +1,9 @@
-import { Card } from '../components/ui/primitives.jsx';
+import { FileText } from 'lucide-react';
+import { Card, Button, SectionHeader } from '../components/ui/primitives.jsx';
 import { ChannelChart } from '../components/ChannelChart.jsx';
 import { Traceroute } from '../components/Traceroute.jsx';
 import { latencyVariant } from '../lib/signal.js';
+import { downloadDiagnosticReport } from '../lib/reportExporter.js';
 
 // Small stat card: label → big value → sublabel, colored by quality.
 function StatCard({ label, value, unit, sublabel, ms }) {
@@ -27,6 +29,22 @@ export function Diagnostics({ live }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <SectionHeader
+        right={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => downloadDiagnosticReport(live)}
+            className="flex items-center gap-1.5"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Export Health Report
+          </Button>
+        }
+      >
+        Diagnostics & Network Tools
+      </SectionHeader>
+
       {/* DNS vs raw ping */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard
@@ -50,3 +68,4 @@ export function Diagnostics({ live }) {
     </div>
   );
 }
+

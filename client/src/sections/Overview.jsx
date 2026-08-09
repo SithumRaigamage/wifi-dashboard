@@ -1,4 +1,5 @@
 import { Header } from '../components/Header.jsx';
+import { HealthGauge } from '../components/HealthGauge.jsx';
 import { MetricCards } from '../components/MetricCards.jsx';
 import { ThroughputChart } from '../components/ThroughputChart.jsx';
 import { LatencyTrend } from '../components/LatencyTrend.jsx';
@@ -26,6 +27,7 @@ export function Overview({ live, onNavigate }) {
   return (
     <div className="flex flex-col gap-3">
       <Header status={status} wifi={wifi} connectedSince={connectedSince} />
+      <HealthGauge live={live} />
       <MetricCards wifi={wifi} throughput={throughput} latency={latency} />
       <ThroughputChart history={throughputHistory} />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -37,3 +39,4 @@ export function Overview({ live, onNavigate }) {
     </div>
   );
 }
+

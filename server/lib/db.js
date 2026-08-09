@@ -1,17 +1,20 @@
-// db.js — MySQL connection pool + schema for all persisted data
-// (snapshots, hourly rollups, events, device_history).
+// db.js — Dual MySQL + SQLite embedded storage driver.
 //
-// The app degrades gracefully: if MySQL can't be reached at startup (e.g. creds
-// not wired yet), it logs setup instructions and runs in "no-persistence" mode —
-// live metrics over WebSocket still work, but history/events aren't stored and
-// their queries return empty. Set the DB_* vars in server/.env, then restart.
+// Defaults to MySQL if available; automatically falls back to an embedded SQLite
+// database file (server/data/wifi_dashboard.sqlite) so full persistence (history,
+// hourly rollups, events, device sightings) works out-of-the-box without MySQL setup.
 
+import fs from 'node:fs';
+import path from 'node:path';
 import mysql from 'mysql2/promise';
+import sqlite3 from 'sqlite3';
 import { scoped } from './logger.js';
 
 const log = scoped('db');
 
-let pool = null;
+let pool = null;        // MySQL pool
+let sqliteDb = null;    // SQLite connection
+let dbEngine = null;    // 'mysql' | 'sqlite' | null
 let ready = false;
 
 function dbConfig() {
@@ -24,7 +27,7 @@ function dbConfig() {
   };
 }
 
-const SCHEMA = [
+const MYSQL_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS snapshots (
      ts      BIGINT PRIMARY KEY,
      rssi    INT,
@@ -60,9 +63,41 @@ const SCHEMA = [
    )`,
 ];
 
-// Best-effort: create the database if the configured user is privileged enough.
-// Ignored if it already exists or the user lacks CREATE privilege (the bootstrap
-// script handles that case).
+const SQLITE_SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS snapshots (
+     ts      INTEGER PRIMARY KEY,
+     rssi    INTEGER,
+     rx_sec  REAL,
+     tx_sec  REAL,
+     latency REAL,
+     loss    INTEGER
+   )`,
+  `CREATE TABLE IF NOT EXISTS hourly (
+     hour    INTEGER PRIMARY KEY,
+     rssi    REAL,
+     rx_sec  REAL,
+     tx_sec  REAL,
+     latency REAL,
+     loss    REAL,
+     samples INTEGER NOT NULL DEFAULT 0
+   )`,
+  `CREATE TABLE IF NOT EXISTS events (
+     id       INTEGER PRIMARY KEY AUTOINCREMENT,
+     ts       INTEGER NOT NULL,
+     kind     TEXT NOT NULL,
+     severity TEXT NOT NULL,
+     message  TEXT NOT NULL,
+     meta     TEXT
+   )`,
+  `CREATE TABLE IF NOT EXISTS device_history (
+     mac        TEXT PRIMARY KEY,
+     first_seen INTEGER NOT NULL,
+     last_seen  INTEGER NOT NULL,
+     last_ip    TEXT,
+     seen_count INTEGER NOT NULL DEFAULT 1
+   )`,
+];
+
 async function ensureDatabase(cfg) {
   try {
     const admin = await mysql.createConnection({
@@ -70,41 +105,83 @@ async function ensureDatabase(cfg) {
       port: cfg.port,
       user: cfg.user,
       password: cfg.password,
+      connectTimeout: 2000,
     });
     await admin.query(`CREATE DATABASE IF NOT EXISTS \`${cfg.database}\``);
     await admin.end();
   } catch {
-    /* no privilege / already exists — the pool connect below is the real test */
+    /* fallback to sqlite if mysql is unreachable */
   }
+}
+
+function initSqlite() {
+  return new Promise((resolve, reject) => {
+    const dataDir = path.resolve(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    const dbPath = path.join(dataDir, 'wifi_dashboard.sqlite');
+    const db = new sqlite3.Database(dbPath, async (err) => {
+      if (err) return reject(err);
+      sqliteDb = db;
+      try {
+        for (const ddl of SQLITE_SCHEMA) {
+          await runSqliteDdl(ddl);
+        }
+        dbEngine = 'sqlite';
+        ready = true;
+        log.info(`SQLite embedded database ready: ${dbPath}`);
+        resolve(true);
+      } catch (ddlErr) {
+        reject(ddlErr);
+      }
+    });
+  });
+}
+
+function runSqliteDdl(sql) {
+  return new Promise((resolve, reject) => {
+    sqliteDb.run(sql, (err) => (err ? reject(err) : resolve()));
+  });
 }
 
 export async function initDb() {
   const cfg = dbConfig();
+  if (process.env.DB_DRIVER !== 'sqlite') {
+    try {
+      await ensureDatabase(cfg);
+      pool = mysql.createPool({
+        ...cfg,
+        waitForConnections: true,
+        connectionLimit: 8,
+        maxIdle: 4,
+        idleTimeout: 60000,
+        namedPlaceholders: true,
+        connectTimeout: 2000,
+      });
+      const conn = await pool.getConnection();
+      for (const ddl of MYSQL_SCHEMA) await conn.query(ddl);
+      conn.release();
+      dbEngine = 'mysql';
+      ready = true;
+      log.info(`MySQL connected: ${cfg.user}@${cfg.host}:${cfg.port}/${cfg.database}`);
+      return ready;
+    } catch (err) {
+      if (pool) await pool.end().catch(() => {});
+      pool = null;
+      log.info(`MySQL unavailable (${err.code || err.message}), switching to SQLite embedded engine.`);
+    }
+  }
+
+  // Try SQLite fallback
   try {
-    await ensureDatabase(cfg);
-    pool = mysql.createPool({
-      ...cfg,
-      waitForConnections: true,
-      connectionLimit: 8,
-      maxIdle: 4,
-      idleTimeout: 60000,
-      namedPlaceholders: true,
-    });
-    // Verify connectivity + create tables.
-    const conn = await pool.getConnection();
-    for (const ddl of SCHEMA) await conn.query(ddl);
-    conn.release();
-    ready = true;
-    log.info(`MySQL connected: ${cfg.user}@${cfg.host}:${cfg.port}/${cfg.database}`);
+    await initSqlite();
   } catch (err) {
     ready = false;
-    pool = null;
-    log.warn(
-      `MySQL unavailable (${err.code || err.message}). Running WITHOUT persistence — ` +
-        `history + events won't be saved. To enable: (1) mysql -u root -p < server/sql/init.sql, ` +
-        `(2) set DB_PASSWORD in server/.env, (3) restart.`
-    );
+    dbEngine = null;
+    log.error(`SQLite initialization failed: ${err.message}. Running without persistence.`);
   }
+
   return ready;
 }
 
@@ -112,23 +189,89 @@ export function isDbReady() {
   return ready;
 }
 
-// Thin query helper. Returns [] when persistence is off so callers can treat a
-// missing DB the same as an empty result set.
-export async function query(sql, params) {
-  if (!ready || !pool) return [];
-  const [rows] = await pool.query(sql, params);
-  return rows;
+export function getDbEngine() {
+  return dbEngine;
 }
 
-// For INSERT/UPDATE/DELETE where the caller wants the result meta (insertId etc).
-export async function execute(sql, params) {
-  if (!ready || !pool) return { affectedRows: 0, insertId: 0 };
-  const [result] = await pool.execute(sql, params);
-  return result;
+// Convert MySQL syntax to SQLite syntax on the fly if running under SQLite engine
+function translateSql(sql) {
+  if (dbEngine !== 'sqlite') return sql;
+
+  // Convert MySQL ON DUPLICATE KEY UPDATE ... VALUES(x) -> SQLite ON CONFLICT(...) DO UPDATE SET ... excluded.x
+  if (sql.includes('ON DUPLICATE KEY UPDATE')) {
+    if (sql.includes('INTO hourly')) {
+      return `INSERT INTO hourly (hour, rssi, rx_sec, tx_sec, latency, loss, samples)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(hour) DO UPDATE SET
+          rssi=excluded.rssi, rx_sec=excluded.rx_sec, tx_sec=excluded.tx_sec,
+          latency=excluded.latency, loss=excluded.loss, samples=excluded.samples`;
+    }
+    if (sql.includes('INTO snapshots')) {
+      return `INSERT INTO snapshots (ts, rssi, rx_sec, tx_sec, latency, loss)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(ts) DO UPDATE SET
+          rssi=excluded.rssi, rx_sec=excluded.rx_sec, tx_sec=excluded.tx_sec,
+          latency=excluded.latency, loss=excluded.loss`;
+    }
+  }
+
+  return sql;
+}
+
+// Query helper returning array of objects
+export async function query(sql, params = []) {
+  if (!ready) return [];
+  if (dbEngine === 'mysql' && pool) {
+    const [rows] = await pool.query(sql, params);
+    return rows;
+  }
+  if (dbEngine === 'sqlite' && sqliteDb) {
+    const translated = translateSql(sql);
+    return new Promise((resolve, reject) => {
+      sqliteDb.all(translated, params, (err, rows) => {
+        if (err) {
+          log.error(`SQLite query error: ${err.message} (SQL: ${translated})`);
+          return resolve([]);
+        }
+        resolve(rows || []);
+      });
+    });
+  }
+  return [];
+}
+
+// Execute helper returning result metadata { affectedRows, insertId }
+export async function execute(sql, params = []) {
+  if (!ready) return { affectedRows: 0, insertId: 0 };
+  if (dbEngine === 'mysql' && pool) {
+    const [result] = await pool.execute(sql, params);
+    return result;
+  }
+  if (dbEngine === 'sqlite' && sqliteDb) {
+    const translated = translateSql(sql);
+    return new Promise((resolve, reject) => {
+      sqliteDb.run(translated, params, function (err) {
+        if (err) {
+          log.error(`SQLite execute error: ${err.message} (SQL: ${translated})`);
+          return resolve({ affectedRows: 0, insertId: 0 });
+        }
+        resolve({ affectedRows: this.changes || 0, insertId: this.lastID || 0 });
+      });
+    });
+  }
+  return { affectedRows: 0, insertId: 0 };
 }
 
 export async function closeDb() {
-  if (pool) await pool.end();
-  pool = null;
+  if (pool) {
+    await pool.end().catch(() => {});
+    pool = null;
+  }
+  if (sqliteDb) {
+    await new Promise((resolve) => sqliteDb.close(resolve));
+    sqliteDb = null;
+  }
+  dbEngine = null;
   ready = false;
 }
+

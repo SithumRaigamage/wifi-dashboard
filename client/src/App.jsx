@@ -65,8 +65,9 @@ export default function App() {
     <div className="flex min-h-full">
       <Sidebar active={section} onSelect={navigate} ssid={ssid} unreadAlerts={unreadAlerts} />
       <main className="min-w-0 flex-1">
-        <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">{content}</div>
+        <div className="w-full px-6 py-6 sm:px-8 lg:px-10">{content}</div>
       </main>
     </div>
   );
 }
+

@@ -115,12 +115,41 @@ function Thresholds({ settings, onSave }) {
 
 export function Alerts({ live }) {
   const { events, settings, saveSettings, clearEvents } = live;
+  const [notifState, setNotifState] = useState(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
+  );
+
+  const requestNotif = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      const res = await Notification.requestPermission();
+      setNotifState(res);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      <SectionHeader>Alerts</SectionHeader>
+      <SectionHeader
+        right={
+          notifState !== 'unsupported' && (
+            <button
+              onClick={requestNotif}
+              className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
+                notifState === 'granted'
+                  ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              }`}
+            >
+              {notifState === 'granted' ? 'Desktop Alerts Enabled' : 'Enable Desktop Alerts'}
+            </button>
+          )
+        }
+      >
+        Alerts & Event Log
+      </SectionHeader>
       <SummaryCard />
       <Thresholds settings={settings} onSave={saveSettings} />
       <EventLog events={events} onClear={clearEvents} />
     </div>
   );
 }
+

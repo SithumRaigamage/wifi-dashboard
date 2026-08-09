@@ -7,4 +7,6 @@ server/settings.json
 server/.env
 .env
 server/logs/
+server/data/
 server/vendor-cache.json
+
