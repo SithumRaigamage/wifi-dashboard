@@ -12,6 +12,7 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import si from 'systeminformation';
+import { parseChannelValue, parseKeyValueLine } from './airportParse.js';
 
 const execAsync = promisify(exec);
 
@@ -71,10 +72,9 @@ function parseAirportData(raw) {
     const line = lines[i];
     if (/Other Local Wi-Fi Networks/i.test(line)) break;
 
-    const kv = line.match(/^\s+([\w\s/]+):\s*(.+)$/);
+    const kv = parseKeyValueLine(line);
     if (!kv) continue;
-    const key = kv[1].trim();
-    const val = kv[2].trim();
+    const { key, value: val } = kv;
 
     switch (key) {
       case 'BSSID':
@@ -85,13 +85,10 @@ function parseAirportData(raw) {
         break;
 
       case 'Channel': {
-        // e.g. "36 (5GHz, 80MHz)"
-        const cm = val.match(/^(\d+)\s*(?:\(([^,)]+)(?:,\s*([^)]+))?\))?/);
-        if (cm) {
-          result.channel = Number(cm[1]);
-          result.band = cm[2]?.trim() || null;
-          result.channelWidth = cm[3]?.trim() || null;
-        }
+        const { channel, band, channelWidth } = parseChannelValue(val);
+        result.channel = channel;
+        result.band = band;
+        result.channelWidth = channelWidth;
         break;
       }
       case 'Signal / Noise': {

@@ -180,11 +180,13 @@ app.get('/api/diagnostics/channels', async (_req, res) => {
     const data = await getChannelCongestion();
     if (data && Array.isArray(data.networks) && latest.wifi) {
       const rogues = detectRogueAccessPoints(latest.wifi, data.networks);
+      rogueApCooldown.prune();
       for (const rogue of rogues) {
+        if (!rogueApCooldown.tryFire(rogueApKey(rogue))) continue;
         await emitEvent({
           kind: 'rogue-ap-detected',
-          severity: 'danger',
-          message: rogue.reason,
+          severity: 'warning',
+          message: `${rogue.reason} — could be a mesh/extender node broadcasting the same network name, or a genuine rogue AP`,
           meta: rogue,
         });
       }
@@ -411,12 +413,35 @@ async function handleLatency(data) {
 
 let devicesPrimed = false;
 
+// Shared by any alert whose underlying condition can legitimately persist for
+// a long time (a mesh AP rebroadcasting one SSID on several BSSIDs, a
+// proxy-ARP device answering for several IPs, ...) so it doesn't re-fire every
+// single poll cycle it's still true. `prune()` must be called periodically —
+// without it, a long-running server accumulates one permanent entry per key
+// it has ever seen, growing unbounded over weeks.
+function createCooldown(windowMs) {
+  const lastFiredAt = new Map(); // key -> timestamp
+  return {
+    tryFire(key) {
+      const last = lastFiredAt.get(key);
+      if (last && Date.now() - last < windowMs) return false;
+      lastFiredAt.set(key, Date.now());
+      return true;
+    },
+    prune() {
+      const cutoff = Date.now() - windowMs;
+      for (const [key, ts] of lastFiredAt) {
+        if (ts < cutoff) lastFiredAt.delete(key);
+      }
+    },
+  };
+}
+
 // US-20: some networks legitimately have one MAC answer for multiple IPs (mesh
 // APs and proxy-ARP setups do this routinely), so "danger, right now" on every
-// 45s scan would be constant false-alarm noise. Cool down repeats of the exact
-// same warning instead of re-alerting every cycle it's still true.
-const arpWarningCooldowns = new Map(); // warning key -> last-alerted timestamp
+// 45s scan would be constant false-alarm noise.
 const ARP_WARNING_COOLDOWN_MS = 15 * 60 * 1000;
+const arpWarningCooldown = createCooldown(ARP_WARNING_COOLDOWN_MS);
 
 function arpWarningKey(w) {
   return w.type === 'mac-multiple-ips'
@@ -426,15 +451,13 @@ function arpWarningKey(w) {
     : `ip-mac-conflict:${w.ip}:${[w.mac, w.previousMac].sort().join(',')}`;
 }
 
-// Cooldown entries are only relevant for ARP_WARNING_COOLDOWN_MS; without this,
-// a long-running server accumulates one permanent entry per mac/ip combination
-// it has ever seen conflict, growing unbounded over weeks of DHCP/MAC churn.
-function pruneArpWarningCooldowns() {
-  const cutoff = Date.now() - ARP_WARNING_COOLDOWN_MS;
-  for (const [key, ts] of arpWarningCooldowns) {
-    if (ts < cutoff) arpWarningCooldowns.delete(key);
-  }
-}
+// US-15: same reasoning — a home with 2+ APs/mesh nodes broadcasting one SSID
+// on different BSSIDs for seamless roaming is a completely standard, common
+// setup, not an anomaly, so this needs the same treatment as the ARP case
+// above rather than firing "danger" on every Diagnostics page visit.
+const ROGUE_AP_COOLDOWN_MS = 15 * 60 * 1000;
+const rogueApCooldown = createCooldown(ROGUE_AP_COOLDOWN_MS);
+const rogueApKey = (rogue) => `${rogue.ssid}:${rogue.bssid}`;
 
 async function handleDevices(data) {
   latest.devices = data;
@@ -453,12 +476,9 @@ async function handleDevices(data) {
     // US-20: duplicate IP / one-MAC-many-IPs — a possible ARP-spoof signature,
     // but also a routine pattern on mesh/proxy-ARP networks, so it's a warning
     // to investigate rather than a confirmed attack.
-    pruneArpWarningCooldowns();
+    arpWarningCooldown.prune();
     for (const w of data.arpSpoofWarnings ?? []) {
-      const key = arpWarningKey(w);
-      const last = arpWarningCooldowns.get(key);
-      if (last && Date.now() - last < ARP_WARNING_COOLDOWN_MS) continue;
-      arpWarningCooldowns.set(key, Date.now());
+      if (!arpWarningCooldown.tryFire(arpWarningKey(w))) continue;
 
       const others = w.otherClaimants?.length ? ` (and ${w.otherClaimants.length} more recently)` : '';
       const message =
