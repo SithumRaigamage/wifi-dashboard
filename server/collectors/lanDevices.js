@@ -13,6 +13,7 @@ import os from 'node:os';
 import { lookupVendor } from '../lib/ouiVendors.js';
 import { resolveVendor } from '../lib/vendorLookup.js';
 import { recordSighting, snapshotIpOwners, findIpMacConflict } from '../lib/devices.js';
+import { classifyOs } from '../lib/osFingerprint.js';
 import { getSettings } from '../lib/settings.js';
 
 const execAsync = promisify(exec);
@@ -213,6 +214,16 @@ export async function getLanDevices({ sweep = true, preferIface } = {}) {
 
   await enrichHostnames(devices);
   if (getSettings().onlineVendorLookup) await enrichVendorsOnline(devices);
+
+  // US-21: best-effort OS guess, run last so it sees the fully-enriched
+  // hostname/vendor rather than the raw arp-table fields. Destructured as
+  // osGuess (not os) — this file imports node:os for getLocalSubnet(), and
+  // shadowing it here would be a landmine for a future edit.
+  for (const d of devices) {
+    const { os: osGuess, confidence } = classifyOs(d);
+    d.os = osGuess;
+    d.osConfidence = confidence;
+  }
 
   return {
     subnet: subnet?.base ? `${subnet.base}.0/24` : null,

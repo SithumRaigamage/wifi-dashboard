@@ -4,7 +4,7 @@ import { SectionHeader, Badge, Button } from '../components/ui/primitives.jsx';
 import { NetworkTopology } from '../components/NetworkTopology.jsx';
 import { PortAudit } from '../components/PortAudit.jsx';
 import { qualityMeta } from '../lib/signal.js';
-import { deviceIcon, autoName, isGatewayIp } from '../lib/deviceMeta.js';
+import { deviceIcon, autoName, isGatewayIp, formatOs } from '../lib/deviceMeta.js';
 import { getDeviceMeta, setDeviceName, cycleDeviceTag, toggleDeviceTrust, TAGS } from '../lib/deviceStore.js';
 import { fmtRelative, fmtDateTime } from '../lib/utils.js';
 
@@ -18,6 +18,7 @@ function DeviceRow({ d, isSelf, isGateway, last, onChange, auditing, onToggleAud
   const Icon = deviceIcon(d, isSelf, isGateway);
   const q = qualityMeta(d.quality);
   const fallback = autoName(d, isSelf, isGateway);
+  const osInfo = formatOs(d);
 
   const save = () => {
     setDeviceName(d.mac, draft.trim());
@@ -73,6 +74,7 @@ function DeviceRow({ d, isSelf, isGateway, last, onChange, auditing, onToggleAud
               <span className="font-mono">· {d.mac}</span>
               {/* Show vendor when it isn't already what the name shows. */}
               {d.vendor && meta.name && meta.name !== d.vendor && <span>· {d.vendor}</span>}
+              {osInfo && <span title={osInfo.title}>· {osInfo.label}</span>}
               {d.firstSeen && (
                 <span title={`First seen ${fmtDateTime(d.firstSeen)}`}>· seen {fmtRelative(d.firstSeen)}</span>
               )}
@@ -244,6 +246,7 @@ export function Devices({ live }) {
                   <th className="py-2.5 px-2">IP Address</th>
                   <th className="py-2.5 px-2">MAC Address</th>
                   <th className="py-2.5 px-2">Vendor</th>
+                  <th className="py-2.5 px-2">OS</th>
                   <th className="py-2.5 px-2">Trust Status</th>
                   <th className="py-2.5 px-2">Tag</th>
                   <th className="py-2.5 px-2 text-right">Ping RTT</th>
@@ -255,6 +258,7 @@ export function Devices({ live }) {
                   const isSelf = d.ip === selfIp;
                   const isGateway = isGatewayIp(d.ip);
                   const name = meta.name || autoName(d, isSelf, isGateway);
+                  const osInfo = formatOs(d);
                   return (
                     <tr key={d.mac + d.ip} className="hover:bg-[var(--surface-2)] transition-colors">
                       <td className="py-2.5 px-2 font-medium text-[var(--text-primary)]">
@@ -263,6 +267,9 @@ export function Devices({ live }) {
                       <td className="py-2.5 px-2 font-mono text-[var(--text-muted)]">{d.ip}</td>
                       <td className="py-2.5 px-2 font-mono text-[var(--text-muted)]">{d.mac}</td>
                       <td className="py-2.5 px-2 text-[var(--text-muted)]">{d.vendor || '—'}</td>
+                      <td className="py-2.5 px-2 text-[var(--text-muted)]" title={osInfo?.title}>
+                        {osInfo?.label || '—'}
+                      </td>
                       <td className="py-2.5 px-2">
                         {meta.trust === 'trusted' && <Badge variant="success">Trusted</Badge>}
                         {meta.trust === 'suspect' && <Badge variant="danger">Suspect</Badge>}

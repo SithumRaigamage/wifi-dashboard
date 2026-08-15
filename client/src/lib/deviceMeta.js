@@ -2,11 +2,16 @@
 // recent-devices preview and the full Devices section so both label a device the
 // same way. A locally-saved friendly name (from deviceStore) always wins.
 
-import { Router, Laptop, Smartphone, HardDrive } from 'lucide-react';
+import { Router, Laptop, Smartphone, HardDrive, Apple, AppWindow, Terminal, Tv } from 'lucide-react';
+
+// US-21: icon by best-effort OS guess when we have one (any confidence — the
+// icon is a soft hint, not a claim; osConfidence is what drives the label).
+const OS_ICON = { iOS: Apple, macOS: Laptop, Windows: AppWindow, Android: Smartphone, Linux: Terminal, Tizen: Tv };
 
 export function deviceIcon(d, isSelf, isGateway) {
   if (isGateway) return Router;
   if (isSelf) return Laptop;
+  if (d.os && OS_ICON[d.os]) return OS_ICON[d.os];
   if (d.randomizedMac) return Smartphone; // randomized MAC → likely a phone/laptop
   return HardDrive;
 }
@@ -21,4 +26,13 @@ export function autoName(d, isSelf, isGateway) {
 
 export function isGatewayIp(ip) {
   return typeof ip === 'string' && ip.endsWith('.1');
+}
+
+// US-21: one place for the OS label + tooltip so the card row and table view
+// can't drift out of sync on how a guess is presented.
+export function formatOs(d) {
+  if (!d.os) return null;
+  const label = d.osConfidence === 'low' ? `${d.os}?` : d.os;
+  const title = d.osConfidence === 'low' ? 'Guessed from vendor only — low confidence' : 'Guessed from hostname';
+  return { label, title };
 }
