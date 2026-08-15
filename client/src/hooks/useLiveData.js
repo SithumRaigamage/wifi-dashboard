@@ -168,10 +168,13 @@ export function useLiveData() {
   }, [handleMessage]);
 
   const rescanDevices = useCallback(async () => {
+    // The backend rejects an overlapping scan (409) rather than queueing it —
+    // report that back so the UI doesn't imply a rescan happened when it didn't.
     try {
-      await fetch('/api/devices/scan', { method: 'POST' });
+      const res = await fetch('/api/devices/scan', { method: 'POST' });
+      return { ok: res.ok, status: res.status };
     } catch {
-      /* backend will also refresh on its own interval */
+      return { ok: false, status: null };
     }
   }, []);
 

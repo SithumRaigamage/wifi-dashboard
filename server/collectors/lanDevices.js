@@ -12,7 +12,7 @@ import dns from 'node:dns/promises';
 import os from 'node:os';
 import { lookupVendor } from '../lib/ouiVendors.js';
 import { resolveVendor } from '../lib/vendorLookup.js';
-import { recordSighting } from '../lib/devices.js';
+import { recordSighting, snapshotIpOwners, findIpMacConflict } from '../lib/devices.js';
 import { getSettings } from '../lib/settings.js';
 
 const execAsync = promisify(exec);
@@ -136,6 +136,22 @@ async function enrichHostnames(devices) {
   return devices;
 }
 
+// US-20: one MAC replying for more than one IP in the *same* arp snapshot is
+// the classic ARP-spoof/gateway-impersonation signature — a real NIC can't
+// legitimately hold two LAN IPs at once.
+function detectMacMultipleIps(devices) {
+  const ipsByMac = new Map();
+  for (const d of devices) {
+    if (!ipsByMac.has(d.mac)) ipsByMac.set(d.mac, []);
+    ipsByMac.get(d.mac).push(d.ip);
+  }
+  const warnings = [];
+  for (const [mac, ips] of ipsByMac) {
+    if (ips.length > 1) warnings.push({ type: 'mac-multiple-ips', mac, ips });
+  }
+  return warnings;
+}
+
 // LAN RTT (ms) -> quality bucket for the device pill.
 function rttQuality(rtt) {
   if (rtt == null) return 'unknown';
@@ -162,6 +178,14 @@ export async function getLanDevices({ sweep = true, preferIface } = {}) {
     rtt = await pingSweep(subnet.base);
   }
   const devices = await parseArpTable();
+  const arpSpoofWarnings = detectMacMultipleIps(devices);
+
+  // Snapshot who last owned each of this scan's IPs *before* recording any of
+  // this scan's sightings below — so duplicate-IP detection always reflects
+  // pre-scan state. Reading live mid-scan (or after writing) would make the
+  // result depend on which device's own recordSighting() call happens to run
+  // first, and could even erase the exact history a conflict check needs.
+  const ipOwnerSnapshot = await snapshotIpOwners(devices.map((d) => d.ip));
 
   const newlySeen = [];
   for (const d of devices) {
@@ -169,13 +193,14 @@ export async function getLanDevices({ sweep = true, preferIface } = {}) {
     d.rttMs = ms;
     d.quality = rttQuality(ms);
 
-    // Persistent first-seen / last-seen / count, and flag never-before-seen MACs
-    // so the caller can raise a "new device" alert.
     const sighting = await recordSighting(d.mac, d.ip);
     d.firstSeen = sighting.firstSeen;
     d.lastSeen = sighting.lastSeen;
     d.seenCount = sighting.seenCount;
     if (sighting.isNew) newlySeen.push({ mac: d.mac, ip: d.ip, vendor: d.vendor });
+
+    const conflict = findIpMacConflict(d.ip, d.mac, ipOwnerSnapshot);
+    if (conflict) arpSpoofWarnings.push({ type: 'ip-mac-conflict', ip: d.ip, mac: d.mac, ...conflict });
   }
 
   // Sort by numeric IP for a stable, readable table.
@@ -195,5 +220,6 @@ export async function getLanDevices({ sweep = true, preferIface } = {}) {
     count: devices.length,
     devices,
     newlySeen, // MACs seen for the first time this scan (for the new-device alert)
+    arpSpoofWarnings, // duplicate-IP / one-MAC-many-IPs signals (for the arp-spoof alert)
   };
 }

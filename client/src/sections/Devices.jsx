@@ -138,13 +138,22 @@ export function Devices({ live }) {
   const [, setVersion] = useState(0); // bump to re-read localStorage after edits
   const bump = () => setVersion((n) => n + 1);
   const [auditingMac, setAuditingMac] = useState(null); // mac of the row with its port-audit panel open
+  const [rescanNotice, setRescanNotice] = useState(null);
 
   const list = devices?.devices ?? null;
   const selfIp = devices?.selfIp;
 
   const handleRescan = async () => {
     setScanning(true);
-    await rescanDevices?.();
+    setRescanNotice(null);
+    const result = await rescanDevices?.();
+    if (result && !result.ok) {
+      setRescanNotice(
+        result.status === 409
+          ? 'A scan was already in progress — try again in a moment.'
+          : "Rescan didn't go through — the next scheduled scan will still update this list."
+      );
+    }
     setTimeout(() => setScanning(false), 3000);
   };
 
@@ -192,6 +201,7 @@ export function Devices({ live }) {
         Connected devices{devices?.count != null ? ` · ${devices.count}` : ''}
       </SectionHeader>
 
+      {rescanNotice && <p className="mb-2 text-xs text-[var(--text-warning)]">{rescanNotice}</p>}
 
       {/* Network Topology Visual Graph */}
       <div className="mb-4">

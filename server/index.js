@@ -45,6 +45,7 @@ const latest = {
 };
 
 let speedtestRunning = false;
+let devicesScanning = false;
 const HISTORY_INTERVAL = 5000; // persist a snapshot this often
 const DNS_INTERVAL = 30000; // DNS timing is cheap-ish; refresh periodically
 
@@ -245,8 +246,8 @@ app.post('/api/devices/scan-ports', async (req, res) => {
 // Trigger an immediate device rescan on demand.
 app.post('/api/devices/scan', async (_req, res) => {
   try {
-    const data = await getLanDevices({ sweep: true });
-    await handleDevices(data);
+    const data = await runDeviceScan({ sweep: true });
+    if (!data) return res.status(409).json({ error: 'a scan is already running' });
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -409,6 +410,32 @@ async function handleLatency(data) {
 }
 
 let devicesPrimed = false;
+
+// US-20: some networks legitimately have one MAC answer for multiple IPs (mesh
+// APs and proxy-ARP setups do this routinely), so "danger, right now" on every
+// 45s scan would be constant false-alarm noise. Cool down repeats of the exact
+// same warning instead of re-alerting every cycle it's still true.
+const arpWarningCooldowns = new Map(); // warning key -> last-alerted timestamp
+const ARP_WARNING_COOLDOWN_MS = 15 * 60 * 1000;
+
+function arpWarningKey(w) {
+  return w.type === 'mac-multiple-ips'
+    ? `mac-multiple-ips:${w.mac}:${[...w.ips].sort().join(',')}`
+    // Sort the two MACs so an IP flapping A->B->A->B cools down as one
+    // recurring situation instead of two keys that alternate and never settle.
+    : `ip-mac-conflict:${w.ip}:${[w.mac, w.previousMac].sort().join(',')}`;
+}
+
+// Cooldown entries are only relevant for ARP_WARNING_COOLDOWN_MS; without this,
+// a long-running server accumulates one permanent entry per mac/ip combination
+// it has ever seen conflict, growing unbounded over weeks of DHCP/MAC churn.
+function pruneArpWarningCooldowns() {
+  const cutoff = Date.now() - ARP_WARNING_COOLDOWN_MS;
+  for (const [key, ts] of arpWarningCooldowns) {
+    if (ts < cutoff) arpWarningCooldowns.delete(key);
+  }
+}
+
 async function handleDevices(data) {
   latest.devices = data;
   broadcast('devices', data);
@@ -423,8 +450,41 @@ async function handleDevices(data) {
         meta: d,
       });
     }
+    // US-20: duplicate IP / one-MAC-many-IPs — a possible ARP-spoof signature,
+    // but also a routine pattern on mesh/proxy-ARP networks, so it's a warning
+    // to investigate rather than a confirmed attack.
+    pruneArpWarningCooldowns();
+    for (const w of data.arpSpoofWarnings ?? []) {
+      const key = arpWarningKey(w);
+      const last = arpWarningCooldowns.get(key);
+      if (last && Date.now() - last < ARP_WARNING_COOLDOWN_MS) continue;
+      arpWarningCooldowns.set(key, Date.now());
+
+      const others = w.otherClaimants?.length ? ` (and ${w.otherClaimants.length} more recently)` : '';
+      const message =
+        w.type === 'mac-multiple-ips'
+          ? `MAC ${w.mac} is answering for multiple IPs (${w.ips.join(', ')}) — could be ARP spoofing, or a mesh/proxy-ARP device`
+          : `IP ${w.ip} was claimed by ${w.previousMac}${others} moments ago, now by ${w.mac} — possible duplicate-IP / ARP spoofing`;
+      await emitEvent({ kind: 'arp-spoof-warning', severity: 'warning', message, meta: w });
+    }
   }
   devicesPrimed = true;
+}
+
+// Shared by the scheduled devices loop and the manual "rescan now" endpoint so
+// they can never run concurrently — getLanDevices()'s duplicate-IP detection
+// (US-20) reads a pre-scan snapshot and then writes sightings, an invariant
+// that a second, overlapping scan could violate mid-flight.
+async function runDeviceScan({ sweep }) {
+  if (devicesScanning) return null;
+  devicesScanning = true;
+  try {
+    const data = await getLanDevices({ sweep });
+    await handleDevices(data);
+    return data;
+  } finally {
+    devicesScanning = false;
+  }
 }
 
 // --- Polling loops ---------------------------------------------------------
@@ -464,7 +524,7 @@ function startLoops() {
   loop(async () => handleWifi(await getWifiStats()), () => getSettings().wifiInterval, 'wifi');
   loop(async () => handleLatency(await getLatency()), () => getSettings().latencyInterval, 'latency');
   loop(
-    async () => handleDevices(await getLanDevices({ sweep: true })),
+    () => runDeviceScan({ sweep: true }),
     () => getSettings().devicesInterval,
     'devices'
   );

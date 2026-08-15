@@ -96,6 +96,7 @@ const SQLITE_SCHEMA = [
      last_ip    TEXT,
      seen_count INTEGER NOT NULL DEFAULT 1
    )`,
+  `CREATE INDEX IF NOT EXISTS idx_device_history_last_ip ON device_history (last_ip)`,
 ];
 
 async function ensureDatabase(cfg) {
@@ -161,6 +162,20 @@ export async function initDb() {
       });
       const conn = await pool.getConnection();
       for (const ddl of MYSQL_SCHEMA) await conn.query(ddl);
+      // `CREATE TABLE IF NOT EXISTS` is a no-op on a database that already has
+      // device_history, so a new index can't ride along inside that statement —
+      // it has to be added separately. Best-effort: it's a performance nicety,
+      // not a correctness requirement, so no failure here (already-exists, a
+      // permissions setup without ALTER/INDEX, a lock timeout, ...) should ever
+      // be allowed to fail the whole connection and force a downgrade to a
+      // fresh SQLite database.
+      try {
+        await conn.query('ALTER TABLE device_history ADD INDEX idx_device_history_last_ip (last_ip)');
+      } catch (err) {
+        if (err.code !== 'ER_DUP_KEYNAME') {
+          log.info(`could not add device_history(last_ip) index (${err.code || err.message}) — continuing without it`);
+        }
+      }
       conn.release();
       dbEngine = 'mysql';
       ready = true;
