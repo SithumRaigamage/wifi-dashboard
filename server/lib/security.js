@@ -10,25 +10,24 @@ const REDACTED = '<redacted>';
 export function detectRogueAccessPoints(currentWifi, nearbyNetworks = []) {
   if (!currentWifi || !currentWifi.ssid || currentWifi.ssid === REDACTED) return [];
 
-  // Defense-in-depth beyond the exact REDACTED string match above: if the
-  // *same* SSID value shows up on 2+ different neighbor networks, that value
-  // is almost certainly a shared "can't tell you" placeholder rather than a
-  // real, distinguishable SSID (genuine duplicate-SSID evil twins are rare;
-  // this catches the same mass-false-positive failure mode even if macOS
-  // ever uses a different placeholder string than the one hardcoded above —
-  // a different locale, a future OS version, etc.).
-  const ssidCounts = new Map();
-  for (const net of nearbyNetworks) {
-    if (net.ssid) ssidCounts.set(net.ssid, (ssidCounts.get(net.ssid) || 0) + 1);
-  }
-
   const rogues = [];
   const currentSsid = currentWifi.ssid;
   const currentBssid = currentWifi.bssid;
 
   for (const net of nearbyNetworks) {
     if (net.ssid === REDACTED) continue; // can't compare an unresolved SSID to anything
-    if (ssidCounts.get(net.ssid) > 1) continue; // shared by multiple neighbors — looks like a placeholder, not a real match
+    // Note: `net.bssid &&` below is what actually protects against the
+    // redacted-network false-positive case (macOS never provides a BSSID for
+    // an unresolved nearby network, confirmed directly against real output —
+    // a structural property of the redaction, not dependent on matching its
+    // exact placeholder text). An earlier version of this function also
+    // suppressed any SSID shared by 2+ neighbors as extra insurance, but that
+    // provided no additional protection against the real failure mode (the
+    // bssid check already covers it) while creating a real one: it would
+    // just as easily hide a genuine evil twin that happens to reuse a common
+    // SSID also broadcast by an unrelated neighbor — exactly the kind of
+    // collision an attacker could deliberately exploit by spoofing a common
+    // default SSID. Removed.
     if (net.ssid === currentSsid && net.bssid && net.bssid !== currentBssid) {
       // Same SSID name, but different BSSID!
       const securityMismatch = currentWifi.security && net.security && currentWifi.security !== net.security;

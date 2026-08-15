@@ -16,6 +16,11 @@ export function FloorPlan({ live }) {
   const [data, setData] = useState(getStoredData);
   const [opacity, setOpacity] = useState(0.5);
   const [roomName, setRoomName] = useState('Living Room');
+  // Set only from <img onLoad> — the heatmap effect below depends on this
+  // (not a ref mutated imperatively in the load handler) so a canvas
+  // resize and the redraw it requires always happen together in the same
+  // effect run, instead of two independently-timed DOM mutations racing.
+  const [imgSize, setImgSize] = useState(null); // { width, height }
   const canvasRef = useRef(null);
   const imageRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -36,6 +41,7 @@ export function FloorPlan({ live }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
+      setImgSize(null); // this image hasn't loaded yet — wait for onLoad's real size rather than drawing at the previous image's
       setData((prev) => ({ ...prev, image: evt.target?.result || null }));
     };
     reader.readAsDataURL(file);
@@ -62,6 +68,7 @@ export function FloorPlan({ live }) {
   const clearAll = () => {
     if (confirm('Clear floor plan image and all recorded pins?')) {
       setData({ image: null, pins: [] });
+      setImgSize(null);
     }
   };
 
@@ -69,10 +76,16 @@ export function FloorPlan({ live }) {
     setData((prev) => ({ ...prev, pins: [] }));
   };
 
-  // Draw Heatmap on Canvas using IDW
+  // Draw Heatmap on Canvas using IDW. Depends on imgSize (not just data.image)
+  // and does the resize itself, right before drawing — sizing the canvas
+  // always clears it, so sizing and drawing have to happen in the same pass
+  // or whichever finishes last silently wins with nothing to redraw after it.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !data.image) return;
+    if (!canvas || !data.image || !imgSize) return;
+
+    canvas.width = imgSize.width;
+    canvas.height = imgSize.height;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -129,7 +142,7 @@ export function FloorPlan({ live }) {
     }
 
     ctx.putImageData(imgData, 0, 0);
-  }, [data.image, data.pins, opacity]);
+  }, [data.image, data.pins, opacity, imgSize]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -235,9 +248,8 @@ export function FloorPlan({ live }) {
                 alt="Floor Plan"
                 className="max-w-full max-h-[600px] object-contain block"
                 onLoad={() => {
-                  if (canvasRef.current && imageRef.current) {
-                    canvasRef.current.width = imageRef.current.width;
-                    canvasRef.current.height = imageRef.current.height;
+                  if (imageRef.current) {
+                    setImgSize({ width: imageRef.current.width, height: imageRef.current.height });
                   }
                 }}
               />
