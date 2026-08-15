@@ -1,5 +1,22 @@
 import { calculateHealthScore } from './signal.js';
 
+// Every value interpolated into the HTML template below ultimately traces
+// back to network data (SSID, DHCP hostname, vendor string, ...) that a
+// device on the LAN controls — a malicious/compromised device could set its
+// hostname to an HTML/script payload that would otherwise execute when this
+// report is opened in a browser. Escape everything unconditionally rather
+// than deciding field-by-field what's "safe" (a decision that's easy to get
+// wrong today and easier still to get wrong when a field is added later).
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[ch]);
+}
+
 export function generateReportHtml(live = {}) {
   const health = calculateHealthScore(live);
   const now = new Date().toLocaleString();
@@ -32,28 +49,28 @@ export function generateReportHtml(live = {}) {
   <div class="container">
     <h1>
       WiFi Network Health Report
-      <span class="score-badge">${health.label} (${health.score}/100)</span>
+      <span class="score-badge">${escapeHtml(health.label)} (${escapeHtml(health.score)}/100)</span>
     </h1>
-    <div class="subtitle">Generated on ${now} · Host interface monitoring session</div>
+    <div class="subtitle">Generated on ${escapeHtml(now)} · Host interface monitoring session</div>
 
     <div class="grid">
       <div class="card">
         <div class="card-title">Wi-Fi Connection</div>
-        <div class="card-val" style="font-size:20px;">${wifi.ssid || 'Local WiFi'}</div>
+        <div class="card-val" style="font-size:20px;">${escapeHtml(wifi.ssid || 'Local WiFi')}</div>
         <div style="font-size:12px; color:#94a3b8; margin-top:4px;">
-          RSSI: ${wifi.rssi ?? 'N/A'} dBm | Channel: ${wifi.channel ?? 'N/A'} | Link: ${wifi.txRate ?? 'N/A'} Mbps
+          RSSI: ${escapeHtml(wifi.rssi ?? 'N/A')} dBm | Channel: ${escapeHtml(wifi.channel ?? 'N/A')} | Link: ${escapeHtml(wifi.txRate ?? 'N/A')} Mbps
         </div>
       </div>
       <div class="card">
         <div class="card-title">Latency & Stability</div>
-        <div class="card-val">${latency.latencyMs != null ? Math.round(latency.latencyMs) + ' ms' : 'N/A'}</div>
+        <div class="card-val">${latency.latencyMs != null ? escapeHtml(Math.round(latency.latencyMs)) + ' ms' : 'N/A'}</div>
         <div style="font-size:12px; color:#94a3b8; margin-top:4px;">
-          Jitter: ${latency.jitterMs ?? 0} ms | Packet Loss: ${latency.packetLoss ?? 0}%
+          Jitter: ${escapeHtml(latency.jitterMs ?? 0)} ms | Packet Loss: ${escapeHtml(latency.packetLoss ?? 0)}%
         </div>
       </div>
     </div>
 
-    <h2 style="font-size:16px; margin-top:24px; color:#f8fafc;">Active LAN Devices (${devices.length})</h2>
+    <h2 style="font-size:16px; margin-top:24px; color:#f8fafc;">Active LAN Devices (${escapeHtml(devices.length)})</h2>
     <table>
       <thead>
         <tr>
@@ -66,10 +83,10 @@ export function generateReportHtml(live = {}) {
       <tbody>
         ${devices.map(d => `
           <tr>
-            <td>${d.hostname || d.vendor || 'Device'}</td>
-            <td>${d.ip}</td>
-            <td style="font-family:monospace;">${d.mac}</td>
-            <td>${d.rttMs != null ? d.rttMs + ' ms' : 'Active'}</td>
+            <td>${escapeHtml(d.hostname || d.vendor || 'Device')}</td>
+            <td>${escapeHtml(d.ip)}</td>
+            <td style="font-family:monospace;">${escapeHtml(d.mac)}</td>
+            <td>${d.rttMs != null ? escapeHtml(d.rttMs) + ' ms' : 'Active'}</td>
           </tr>
         `).join('')}
       </tbody>
