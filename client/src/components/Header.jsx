@@ -73,7 +73,7 @@ export function Header({ status, wifi, connectedSince, onKiosk, live }) {
         <Badge variant={badgeVariant} className="py-1">
 
           <span className="relative flex h-1.5 w-1.5">
-            {live && connected && (
+            {isWsOpen && connected && (
               <span
                 className="absolute inline-flex h-full w-full rounded-full bg-current"
                 style={{ animation: 'livepulse 2s ease-in-out infinite' }}
