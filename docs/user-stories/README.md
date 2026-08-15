@@ -11,6 +11,12 @@ Each story details:
 
 ---
 
+> **Extended backlog:** [US-53-194-Future-Product-Backlog.md](./US-53-194-Future-Product-Backlog.md) adds
+> 142 further stories (US-053–US-194) — advanced analytics, an explainable root-cause diagnostics engine,
+> security/incident/alert intelligence, baselines, reporting, and integrations — evolving beyond US-01–52
+> without duplicating any of them. Includes priority/feasibility matrices, a phased Phase 3–8 roadmap, and
+> a Kill/Keep/Invest analysis.
+
 ## 📚 User Story Index
 
 ### Category 1: UI/UX & Visual Experience (`US-01-10-UI-UX-Experience.md`)
