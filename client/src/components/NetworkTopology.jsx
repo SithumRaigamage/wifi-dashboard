@@ -2,16 +2,12 @@ import { useState, useMemo } from 'react';
 import { Router, Laptop, Smartphone, HardDrive, ShieldCheck, AlertTriangle, HelpCircle, X } from 'lucide-react';
 import { Card, Badge } from './ui/primitives.jsx';
 import { getDeviceMeta, toggleDeviceTrust, setDeviceName } from '../lib/deviceStore.js';
-import { autoName } from '../lib/deviceMeta.js';
+import { autoName, isGatewayIp } from '../lib/deviceMeta.js';
 
 
-export function NetworkTopology({ devices = [] }) {
+export function NetworkTopology({ devices = [], selfIp }) {
   const [selectedMac, setSelectedMac] = useState(null);
   const [storeTick, setStoreTick] = useState(0);
-
-  const selectedDevice = useMemo(() => {
-    return devices.find((d) => d.mac === selectedMac);
-  }, [devices, selectedMac]);
 
   // Node placement calculations
   const center = { x: 250, y: 180 };
@@ -25,8 +21,10 @@ export function NetworkTopology({ devices = [] }) {
       const x = center.x + radius * Math.cos(angle);
       const y = center.y + radius * Math.sin(angle);
 
+      const isSelf = selfIp != null && dev.ip === selfIp;
+      const isGateway = isGatewayIp(dev.ip);
       const meta = getDeviceMeta(dev.mac);
-      const name = meta.name || autoName(dev, dev.isSelf, dev.isGateway);
+      const name = meta.name || autoName(dev, isSelf, isGateway);
 
       let statusColor = '#10b981'; // emerald
       if (dev.quality === 'fair') statusColor = '#f59e0b';
@@ -40,9 +38,18 @@ export function NetworkTopology({ devices = [] }) {
         name,
         meta,
         statusColor,
+        isSelf,
+        isGateway,
       };
     });
-  }, [devices, storeTick]);
+  }, [devices, selfIp, storeTick]);
+
+  // Derived from `nodes` (not the raw `devices` prop) so it carries the same
+  // isSelf/isGateway/name/meta enrichment every rendered node already has —
+  // selectedMac can only ever be set by clicking one of those nodes anyway.
+  const selectedDevice = useMemo(() => {
+    return nodes.find((n) => n.mac === selectedMac);
+  }, [nodes, selectedMac]);
 
   const handleToggleTrust = (mac) => {
     toggleDeviceTrust(mac);

@@ -212,7 +212,7 @@ export function Devices({ live }) {
 
       {/* Network Topology Visual Graph */}
       <div className="mb-4">
-        <NetworkTopology devices={list || []} />
+        <NetworkTopology devices={list || []} selfIp={selfIp} />
       </div>
 
       {/* Tag filter */}
