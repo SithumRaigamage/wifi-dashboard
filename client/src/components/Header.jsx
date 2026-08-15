@@ -4,8 +4,12 @@ import { Badge, Button } from './ui/primitives.jsx';
 import { PipWidgetButton } from './PipWidget.jsx';
 import { fmtDuration } from '../lib/utils.js';
 
+// Returns null when there's genuinely nothing to show yet (e.g. phyMode
+// hasn't come back from system_profiler right after connecting) rather than
+// guessing a specific generation — an unrecognized-but-present phyMode string
+// is shown verbatim instead of being forced into one of the known buckets.
 function getWifiGeneration(phyMode, band) {
-  if (!phyMode) return 'Wi-Fi 6';
+  if (!phyMode) return null;
   if (/be/i.test(phyMode)) return 'Wi-Fi 7';
   if (/ax/i.test(phyMode)) return band && /6/i.test(band) ? 'Wi-Fi 6E' : 'Wi-Fi 6';
   if (/ac/i.test(phyMode)) return 'Wi-Fi 5';
@@ -25,6 +29,7 @@ export function Header({ status, wifi, connectedSince, onKiosk, live }) {
 
   const connected = wifi?.connected;
   const ssid = wifi?.ssid && wifi.ssid !== '<redacted>' ? wifi.ssid : null;
+  const wifiGeneration = getWifiGeneration(wifi?.phyMode, wifi?.band);
 
   // Subtitle: "5 GHz · channel 44" from live wifi data.
   const subParts = [];
@@ -50,9 +55,9 @@ export function Header({ status, wifi, connectedSince, onKiosk, live }) {
             <span className="text-base font-medium leading-tight text-[var(--text-primary)]">
               {ssid || (connected ? 'Wi-Fi' : 'Not connected')}
             </span>
-            {connected && (
+            {connected && wifiGeneration && (
               <Badge variant="muted" className="text-[10px] font-bold py-0 text-blue-500 bg-blue-500/10">
-                {getWifiGeneration(wifi?.phyMode, wifi?.band)}
+                {wifiGeneration}
               </Badge>
             )}
           </div>
