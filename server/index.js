@@ -16,6 +16,7 @@ import { runSpeedTest } from './collectors/speedtest.js';
 import { getChannelCongestion } from './collectors/channels.js';
 import { getDnsTiming } from './collectors/dns.js';
 import { runTraceroute } from './collectors/traceroute.js';
+import { scanPorts } from './collectors/portScanner.js';
 import { initDb } from './lib/db.js';
 import {
   insertSnapshot,
@@ -222,6 +223,23 @@ app.get('/api/status/public', (_req, res) => {
     downtimeTodayMin: Math.round(downtimeStat().todayMs / 60000),
     ts: new Date().toISOString(),
   });
+});
+
+// US-19: on-demand TCP port check for one LAN device (SSH/HTTP/HTTPS/SMB/HTTP-alt).
+// POST (like /api/devices/scan and /api/speedtest/run) rather than GET — this triggers
+// a real TCP scan of another device, and a GET could be fired cross-origin via a plain
+// <img src> with no JS. Also restricted to IPs the dashboard has actually discovered
+// (self + latest arp scan) so it can't be used to sweep arbitrary private addresses.
+app.post('/api/devices/scan-ports', async (req, res) => {
+  const ip = String(req.body?.ip || '').trim();
+  const known =
+    ip === latest.devices?.selfIp || latest.devices?.devices?.some((d) => d.ip === ip);
+  if (!known) return res.status(404).json({ error: 'not a known LAN device' });
+  try {
+    res.json(await scanPorts(ip));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Trigger an immediate device rescan on demand.
