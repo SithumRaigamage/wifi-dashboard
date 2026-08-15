@@ -5,10 +5,21 @@ import { Badge } from './ui/primitives.jsx';
 // Ports considered risky to leave open on a LAN device without a clear reason.
 const RISKY_PORTS = new Set([445, 23]); // SMB, telnet
 
-// US-19: on-demand port audit panel for one device row. Fetches as soon as
+// US-22: an IoT device serving plain HTTP (80/8080) with no HTTPS (443) is a
+// reasonable candidate for guest-network isolation — if it's compromised or
+// has a weak/default admin panel, it's sitting on the same network as
+// everything else rather than fenced off.
+function needsGuestIsolation(isIot, ports) {
+  if (!isIot || !ports) return false;
+  const httpOpen = ports.some((p) => (p.port === 80 || p.port === 8080) && p.open);
+  const httpsOpen = ports.some((p) => p.port === 443 && p.open);
+  return httpOpen && !httpsOpen;
+}
+
+// US-19/22: on-demand port audit panel for one device row. Fetches as soon as
 // it's mounted (i.e. as soon as the row expands) and caches nothing — a scan
 // reflects the device's state right now, not an earlier visit.
-export function PortAudit({ ip }) {
+export function PortAudit({ ip, isIot }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +71,13 @@ export function PortAudit({ ip }) {
             <div className="mt-1.5 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
               <ShieldAlert className="h-3 w-3" strokeWidth={1.75} />
               {result.openCount} open port{result.openCount === 1 ? '' : 's'} — make sure each is intentional.
+            </div>
+          )}
+          {needsGuestIsolation(isIot, result.ports) && (
+            <div className="mt-1.5">
+              <Badge variant="warning" title="Unencrypted admin/API access on an IoT device — consider a guest/IoT VLAN if your router supports one">
+                Recommend Guest Isolation
+              </Badge>
             </div>
           )}
         </>

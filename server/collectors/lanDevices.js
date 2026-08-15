@@ -14,6 +14,7 @@ import { lookupVendor } from '../lib/ouiVendors.js';
 import { resolveVendor } from '../lib/vendorLookup.js';
 import { recordSighting, snapshotIpOwners, findIpMacConflict } from '../lib/devices.js';
 import { classifyOs } from '../lib/osFingerprint.js';
+import { classifyIot } from '../lib/iotClassifier.js';
 import { getSettings } from '../lib/settings.js';
 
 const execAsync = promisify(exec);
@@ -223,6 +224,8 @@ export async function getLanDevices({ sweep = true, preferIface } = {}) {
     const { os: osGuess, confidence } = classifyOs(d);
     d.os = osGuess;
     d.osConfidence = confidence;
+    // US-22: same enriched hostname/vendor, cheap to classify alongside OS.
+    d.isIot = classifyIot(d);
   }
 
   return {

@@ -4,7 +4,7 @@ import { SectionHeader, Badge, Button } from '../components/ui/primitives.jsx';
 import { NetworkTopology } from '../components/NetworkTopology.jsx';
 import { PortAudit } from '../components/PortAudit.jsx';
 import { qualityMeta } from '../lib/signal.js';
-import { deviceIcon, autoName, isGatewayIp, formatOs } from '../lib/deviceMeta.js';
+import { deviceIcon, autoName, isGatewayIp, formatOs, showIotBadge } from '../lib/deviceMeta.js';
 import { getDeviceMeta, setDeviceName, cycleDeviceTag, toggleDeviceTrust, TAGS } from '../lib/deviceStore.js';
 import { fmtRelative, fmtDateTime } from '../lib/utils.js';
 
@@ -101,6 +101,11 @@ function DeviceRow({ d, isSelf, isGateway, last, onChange, auditing, onToggleAud
               random MAC
             </Badge>
           )}
+          {showIotBadge(d, meta) && (
+            <Badge variant="muted" title="Guessed from vendor/hostname — check its port audit for a guest-isolation recommendation">
+              IoT
+            </Badge>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -127,7 +132,7 @@ function DeviceRow({ d, isSelf, isGateway, last, onChange, auditing, onToggleAud
           </button>
         </div>
       </div>
-      {auditing && <PortAudit ip={d.ip} />}
+      {auditing && <PortAudit ip={d.ip} isIot={d.isIot} />}
     </div>
   );
 }
@@ -266,7 +271,14 @@ export function Devices({ live }) {
                       </td>
                       <td className="py-2.5 px-2 font-mono text-[var(--text-muted)]">{d.ip}</td>
                       <td className="py-2.5 px-2 font-mono text-[var(--text-muted)]">{d.mac}</td>
-                      <td className="py-2.5 px-2 text-[var(--text-muted)]">{d.vendor || '—'}</td>
+                      <td className="py-2.5 px-2 text-[var(--text-muted)]">
+                        {d.vendor || '—'}
+                        {showIotBadge(d, meta) && (
+                          <Badge variant="muted" className="ml-1.5" title="Guessed from vendor/hostname">
+                            IoT
+                          </Badge>
+                        )}
+                      </td>
                       <td className="py-2.5 px-2 text-[var(--text-muted)]" title={osInfo?.title}>
                         {osInfo?.label || '—'}
                       </td>

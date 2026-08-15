@@ -36,3 +36,12 @@ export function formatOs(d) {
   const title = d.osConfidence === 'low' ? 'Guessed from vendor only — low confidence' : 'Guessed from hostname';
   return { label, title };
 }
+
+// US-22: same reasoning as formatOs — one place for the auto-detected-IoT
+// badge's visibility so the card row and table view can't drift on when it
+// shows. Suppressed once the user has manually tagged the device 'IoT'
+// themselves (same word, same style — showing both would look like a
+// duplicate-render bug rather than two distinct signals).
+export function showIotBadge(d, meta) {
+  return Boolean(d.isIot) && meta?.tag !== 'IoT';
+}
