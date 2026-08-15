@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { History as HistoryIcon, RotateCcw } from 'lucide-react';
 import { Card, Button, Badge } from './ui/primitives.jsx';
@@ -27,9 +27,25 @@ export function UsageHistory() {
     }
   }, []);
 
+  // scrubIndex is a plain index into `points` — if a background refetch
+  // replaced `points` while scrubbing, that same index could land on a
+  // different bucket entirely (the backend buckets relative to "now", so
+  // boundaries shift over time) or go out of bounds. "Time Travel Active" +
+  // the explicit "Live" button to return already imply a frozen snapshot, so
+  // pause the refetch for as long as a scrub selection is active instead of
+  // letting it silently swap the inspected data out from under the user. A
+  // ref (not scrubIndex directly in the effect deps) so each tick reads the
+  // current value without recreating the interval on every scrub drag event.
+  const scrubIndexRef = useRef(scrubIndex);
+  useEffect(() => {
+    scrubIndexRef.current = scrubIndex;
+  }, [scrubIndex]);
+
   useEffect(() => {
     load(range);
-    const id = setInterval(() => load(range), 15000);
+    const id = setInterval(() => {
+      if (scrubIndexRef.current === null) load(range);
+    }, 15000);
     return () => clearInterval(id);
   }, [range, load]);
 
