@@ -199,7 +199,7 @@ export function NetworkTopology({ devices = [], selfIp }) {
                   )}
                 </div>
                 <div className="text-xs text-zinc-500 font-mono mt-0.5">
-                  IP: {selectedDevice.ip} · MAC: {selectedDevice.mac} {selectedDevice.rttMs ? `· RTT: ${selectedDevice.rttMs}ms` : ''}
+                  IP: {selectedDevice.ip} · MAC: {selectedDevice.mac} {selectedDevice.rttMs != null ? `· RTT: ${selectedDevice.rttMs}ms` : ''}
                 </div>
               </div>
             </div>
