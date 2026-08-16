@@ -189,12 +189,12 @@ export function NetworkTopology({ devices = [], selfIp }) {
               <div>
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-bold text-zinc-900 dark:text-white">
-                    {autoName(selectedDevice, selectedDevice.isSelf, selectedDevice.isGateway)}
+                    {selectedDevice.name}
                   </h4>
-                  {getDeviceMeta(selectedDevice.mac).trust === 'trusted' && (
+                  {selectedDevice.meta.trust === 'trusted' && (
                     <Badge variant="success" className="text-[10px] px-1.5 py-0">Trusted</Badge>
                   )}
-                  {getDeviceMeta(selectedDevice.mac).trust === 'suspect' && (
+                  {selectedDevice.meta.trust === 'suspect' && (
                     <Badge variant="danger" className="text-[10px] px-1.5 py-0">Suspect</Badge>
                   )}
                 </div>
