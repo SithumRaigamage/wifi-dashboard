@@ -4,14 +4,20 @@ import { Card, SectionHeader, Badge } from './ui/primitives.jsx';
 export function BssidInspector({ wifi }) {
   if (!wifi) return null;
 
+  // Unknown fields show '—', matching txRate/mcsIndex/channel below, rather
+  // than a specific-looking fallback (a previous version showed "802.11ax
+  // (Wi-Fi 6)", "80 MHz", "WPA2/WPA3 Personal" whenever the real value was
+  // unavailable — a plausible-looking guess presented with the exact same
+  // styling as a real measurement, which is wrong whenever the actual
+  // hardware doesn't happen to match that guess).
   const fields = [
     { label: 'BSSID (MAC)', value: wifi.bssid || 'SSID/BSSID hidden by macOS Location permission', icon: Radio },
-    { label: 'PHY Protocol Mode', value: wifi.phyMode || '802.11ax (Wi-Fi 6)', icon: Cpu },
-    { label: 'Channel & Band', value: wifi.channel ? `Ch ${wifi.channel} (${wifi.band || '5 GHz'})` : '—', icon: Wifi },
-    { label: 'Channel Width', value: wifi.channelWidth || '80 MHz', icon: ActivityIcon },
+    { label: 'PHY Protocol Mode', value: wifi.phyMode || '—', icon: Cpu },
+    { label: 'Channel & Band', value: wifi.channel ? `Ch ${wifi.channel}${wifi.band ? ` (${wifi.band})` : ''}` : '—', icon: Wifi },
+    { label: 'Channel Width', value: wifi.channelWidth || '—', icon: ActivityIcon },
     { label: 'Link Transmit Rate', value: wifi.txRate ? `${wifi.txRate} Mbps` : '—', icon: Cpu },
     { label: 'MCS Index', value: wifi.mcsIndex != null ? `MCS ${wifi.mcsIndex}` : '—', icon: Cpu },
-    { label: 'Security Standard', value: wifi.security || 'WPA2/WPA3 Personal', icon: Shield },
+    { label: 'Security Standard', value: wifi.security || '—', icon: Shield },
   ];
 
   return (

@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Router, Laptop, Smartphone, HardDrive, ShieldCheck, AlertTriangle, HelpCircle, X } from 'lucide-react';
+import { Router, Laptop, ShieldCheck, AlertTriangle, HelpCircle, X } from 'lucide-react';
 import { Card, Badge } from './ui/primitives.jsx';
 import { getDeviceMeta, toggleDeviceTrust, setDeviceName } from '../lib/deviceStore.js';
-import { autoName, isGatewayIp } from '../lib/deviceMeta.js';
+import { autoName, isGatewayIp, deviceIcon } from '../lib/deviceMeta.js';
 
 
 export function NetworkTopology({ devices = [], selfIp }) {
@@ -25,6 +25,12 @@ export function NetworkTopology({ devices = [], selfIp }) {
       const isGateway = isGatewayIp(dev.ip);
       const meta = getDeviceMeta(dev.mac);
       const name = meta.name || autoName(dev, isSelf, isGateway);
+      // Same OS-aware icon (US-21: Apple/AppWindow/Terminal/Tv when a guess
+      // is available, falling back to randomizedMac/generic) already used by
+      // the Devices list — this map used its own randomizedMac-only version,
+      // so a device fingerprinted as e.g. Windows or Android showed the
+      // correct icon in one view and a generic one here.
+      const Icon = deviceIcon(dev, isSelf, isGateway);
 
       let statusColor = '#10b981'; // emerald
       if (dev.quality === 'fair') statusColor = '#f59e0b';
@@ -40,6 +46,7 @@ export function NetworkTopology({ devices = [], selfIp }) {
         statusColor,
         isSelf,
         isGateway,
+        Icon,
       };
     });
   }, [devices, selfIp, storeTick]);
@@ -147,13 +154,7 @@ export function NetworkTopology({ devices = [], selfIp }) {
                       isSelected ? 'text-white' : 'text-zinc-700 dark:text-zinc-200'
                     }`}
                   >
-                    {node.isSelf ? (
-                      <Laptop size={14} />
-                    ) : node.randomizedMac ? (
-                      <Smartphone size={14} />
-                    ) : (
-                      <HardDrive size={14} />
-                    )}
+                    <node.Icon size={14} />
                   </div>
                 </foreignObject>
 

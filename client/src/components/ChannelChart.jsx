@@ -116,7 +116,17 @@ export function ChannelChart() {
         scores.sort((a, b) => a.score - b.score);
         const best = scores[0];
 
-        if (!data || !own) return null;
+        // This whole card is explicitly scoped to the 2.4GHz band (see the
+        // SectionHeader above), and candidateChannels is only ever 1/6/11 —
+        // the three non-overlapping 2.4GHz channels. Comparing a non-2.4GHz
+        // `own` against those candidates would never match, always showing
+        // "switch your 2.4GHz band" regardless of what band the current
+        // connection is actually on. Checked against the real band tag from
+        // the scan (not just "is the channel number <= 14") since 6GHz PSC
+        // channel numbers can themselves be low (1, 5, 9, 13...) and would
+        // otherwise slip past a channel-number-only check.
+        const ownBand = channels.find((c) => c.channel === own)?.band;
+        if (!data || !own || !ownBand?.startsWith('2')) return null;
 
         const isBest = own === best.channel;
 

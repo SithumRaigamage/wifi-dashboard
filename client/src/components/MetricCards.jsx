@@ -22,7 +22,11 @@ function MetricCard({ label, value, unit, sublabel, valueColor }) {
 export function MetricCards({ wifi, throughput, latency }) {
   const rssi = wifi?.rssi;
   const q = rssiQuality(rssi);
-  const freq = wifi?.band && /2\.4/i.test(wifi.band) ? 2400 : 5200;
+  // wifi.band comes through as "2GHz"/"5GHz"/"6GHz" (see airportParse.js's
+  // parseChannelValue), never "2.4GHz" with a decimal point — matching on
+  // that literal would never fire, silently defaulting every 2.4GHz
+  // connection to the 5GHz path-loss constant.
+  const freq = wifi?.band?.startsWith('2') ? 2400 : 5200;
   const distance = estimateDistance(rssi, freq);
   const linkRate = wifi?.txRate ? `link ${wifi.txRate} Mbps` : null;
 
