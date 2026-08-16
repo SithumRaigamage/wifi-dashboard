@@ -206,7 +206,7 @@ export function Settings({ live, theme, onTheme }) {
         />
         <Row
           label="Language"
-          hint="Dashboard interface language."
+          hint="Translates the sidebar navigation labels. The rest of the dashboard is English-only for now."
           control={
             <Select
               value={getLanguage()}
