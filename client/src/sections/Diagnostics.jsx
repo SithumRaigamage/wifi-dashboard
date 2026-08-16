@@ -5,6 +5,7 @@ import { Traceroute } from '../components/Traceroute.jsx';
 import { BssidInspector } from '../components/BssidInspector.jsx';
 import { SnrChart } from '../components/SnrChart.jsx';
 import { BandSteeringAnalyzer } from '../components/BandSteeringAnalyzer.jsx';
+import { RouterSecurityScan } from '../components/RouterSecurityScan.jsx';
 import { latencyVariant } from '../lib/signal.js';
 import { downloadDiagnosticReport } from '../lib/reportExporter.js';
 
@@ -69,6 +70,7 @@ export function Diagnostics({ live }) {
       <BssidInspector wifi={live.wifi} />
       <SnrChart live={live} />
       <BandSteeringAnalyzer devices={live.devices} />
+      <RouterSecurityScan />
       <ChannelChart />
       <Traceroute />
     </div>

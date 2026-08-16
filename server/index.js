@@ -17,6 +17,7 @@ import { getChannelCongestion } from './collectors/channels.js';
 import { getDnsTiming } from './collectors/dns.js';
 import { runTraceroute } from './collectors/traceroute.js';
 import { scanPorts } from './collectors/portScanner.js';
+import { scanRouterAdminPortal, getDefaultGatewayIp } from './collectors/routerScanner.js';
 import { initDb } from './lib/db.js';
 import {
   insertSnapshot,
@@ -241,6 +242,21 @@ app.post('/api/devices/scan-ports', async (req, res) => {
   if (!known) return res.status(404).json({ error: 'not a known LAN device' });
   try {
     res.json(await scanPorts(ip));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// US-25: on-demand check of the router's own admin portal (HTTP vs HTTPS).
+// POST, matching scan-ports — this fires real HTTP requests. No target param:
+// the gateway is resolved server-side (`route -n get default`) rather than
+// trusting a client-supplied IP, since this endpoint's whole purpose is
+// "scan my own router," not a general scan-anything primitive.
+app.post('/api/diagnostics/router-scan', async (_req, res) => {
+  try {
+    const gatewayIp = await getDefaultGatewayIp();
+    if (!gatewayIp) return res.status(503).json({ error: 'could not resolve default gateway' });
+    res.json(await scanRouterAdminPortal(gatewayIp));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

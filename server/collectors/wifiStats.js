@@ -13,6 +13,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import si from 'systeminformation';
 import { parseChannelValue, parseKeyValueLine } from './airportParse.js';
+import { getDefaultRoute } from './defaultRoute.js';
 
 const execAsync = promisify(exec);
 
@@ -20,18 +21,8 @@ const execAsync = promisify(exec);
 // default route rather than systeminformation's type==='wireless', because the
 // latter can match virtual AP/AWDL interfaces (ap1, awdl0) that carry no
 // real traffic — reading throughput on those returns all zeros.
-let cachedWifiIface = null;
-
 async function getWifiInterface() {
-  if (cachedWifiIface) return cachedWifiIface;
-  try {
-    const { stdout } = await execAsync('route -n get default', { timeout: 3000 });
-    const m = stdout.match(/interface:\s*(\S+)/);
-    cachedWifiIface = m ? m[1] : 'en0';
-  } catch {
-    cachedWifiIface = 'en0';
-  }
-  return cachedWifiIface;
+  return (await getDefaultRoute()).iface;
 }
 
 // Parse the `Current Network Information` block out of system_profiler output.
