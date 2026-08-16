@@ -47,6 +47,16 @@ function isRealHost(ip) {
   return true;
 }
 
+// First three octets, e.g. "192.168.1.42" -> "192.168.1".
+function octetPrefix(ip) {
+  return ip.split('.').slice(0, 3).join('.');
+}
+
+// US-24: /24 prefix as CIDR, e.g. "192.168.1.0/24".
+function subnetOf(ip) {
+  return `${octetPrefix(ip)}.0/24`;
+}
+
 // Find the IPv4 address + /24 base of the active LAN interface.
 function getLocalSubnet(preferIface) {
   const ifaces = os.networkInterfaces();
@@ -54,8 +64,7 @@ function getLocalSubnet(preferIface) {
   for (const name of order) {
     for (const addr of ifaces[name] || []) {
       if (addr.family === 'IPv4' && !addr.internal) {
-        const base = addr.address.split('.').slice(0, 3).join('.');
-        return { iface: name, address: addr.address, base };
+        return { iface: name, address: addr.address, base: octetPrefix(addr.address) };
       }
     }
   }
@@ -117,6 +126,13 @@ async function parseArpTable() {
       hostname: hostField && hostField !== '?' ? hostField : null,
       vendor: lookupVendor(mac),
       randomizedMac: isRandomizedMac(mac),
+      // US-24: /24 prefix, e.g. "192.168.1.0/24" — devices on a segmented
+      // guest/IoT VLAN would show a different subnet here *if* this host can
+      // see them at all (arp -a only sees the same L2 broadcast domain this
+      // Mac is on, which is exactly what a properly isolated guest network
+      // is designed to prevent — see the Devices.jsx filter for how this is
+      // handled when only one subnet is ever actually observed).
+      subnet: subnetOf(ip),
     });
   }
   return devices;
@@ -229,7 +245,7 @@ export async function getLanDevices({ sweep = true, preferIface } = {}) {
   }
 
   return {
-    subnet: subnet?.base ? `${subnet.base}.0/24` : null,
+    subnet: subnet?.address ? subnetOf(subnet.address) : null,
     selfIp: subnet?.address || null,
     count: devices.length,
     devices,

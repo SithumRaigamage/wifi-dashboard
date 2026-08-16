@@ -137,10 +137,33 @@ function DeviceRow({ d, isSelf, isGateway, last, onChange, auditing, onToggleAud
   );
 }
 
+// Shared by the tag filter and the US-24 network filter — a row of pill
+// buttons for a single-select "All" + options filter.
+function FilterRow({ options, value, onChange }) {
+  return (
+    <div className="mb-2 flex flex-wrap gap-1.5">
+      {options.map((opt) => (
+        <Button
+          key={opt}
+          size="sm"
+          variant="outline"
+          onClick={() => onChange(opt)}
+          className={
+            value === opt ? 'border-[var(--border-strong)] bg-[var(--surface-2)] text-[var(--text-primary)]' : ''
+          }
+        >
+          {opt}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 export function Devices({ live }) {
   const { devices, rescanDevices } = live;
   const [scanning, setScanning] = useState(false);
   const [filter, setFilter] = useState('All');
+  const [networkFilter, setNetworkFilter] = useState('All');
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
   const [, setVersion] = useState(0); // bump to re-read localStorage after edits
   const bump = () => setVersion((n) => n + 1);
@@ -164,10 +187,39 @@ export function Devices({ live }) {
     setTimeout(() => setScanning(false), 3000);
   };
 
-  const filtered =
-    list && filter !== 'All'
-      ? list.filter((d) => getDeviceMeta(d.mac).tag === filter)
-      : list;
+  // US-24: distinct subnets actually observed. arp -a only sees the same L2
+  // broadcast domain this Mac is on — which is exactly what a properly
+  // isolated guest/IoT VLAN is designed to prevent — so on most home
+  // networks this app will only ever see one subnet. The filter row below
+  // only renders when there's genuinely more than one to segment by, rather
+  // than showing a single-option control that can't do anything.
+  // Sorted numerically by octet — lexicographic sort would put "...10.0/24"
+  // between "...1.0/24" and "...2.0/24".
+  const subnets = list
+    ? [...new Set(list.map((d) => d.subnet).filter(Boolean))].sort((a, b) => {
+        const oa = a.split('.').map(Number);
+        const ob = b.split('.').map(Number);
+        for (let i = 0; i < 3; i++) if (oa[i] !== ob[i]) return oa[i] - ob[i];
+        return 0;
+      })
+    : [];
+
+  // If a specific subnet was selected and then stops being observed (a
+  // device left, or a rescan just happens to not see it this cycle), the
+  // filter row above would disappear entirely once subnets.length drops to
+  // 1 — leaving no visible control to get back to "All" while the stale
+  // selection still matches zero devices. Falling back to "All" here (a
+  // derived value, not a state reset) means the filter self-heals on the
+  // very next render instead of getting the user stuck.
+  const effectiveNetworkFilter = networkFilter === 'All' || subnets.includes(networkFilter) ? networkFilter : 'All';
+
+  const filtered = list
+    ? list.filter(
+        (d) =>
+          (filter === 'All' || getDeviceMeta(d.mac).tag === filter) &&
+          (effectiveNetworkFilter === 'All' || d.subnet === effectiveNetworkFilter)
+      )
+    : list;
 
   return (
     <div>
@@ -216,31 +268,25 @@ export function Devices({ live }) {
       </div>
 
       {/* Tag filter */}
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        {['All', ...TAGS].map((t) => (
-          <Button
-            key={t}
-            size="sm"
-            variant="outline"
-            onClick={() => setFilter(t)}
-            className={
-              filter === t
-                ? 'border-[var(--border-strong)] bg-[var(--surface-2)] text-[var(--text-primary)]'
-                : ''
-            }
-          >
-            {t}
-          </Button>
-        ))}
-      </div>
+      <FilterRow options={['All', ...TAGS]} value={filter} onChange={setFilter} />
 
+      {/* Network filter — only shown when this app can actually see more than one subnet */}
+      {subnets.length > 1 && (
+        <FilterRow options={['All', ...subnets]} value={effectiveNetworkFilter} onChange={setNetworkFilter} />
+      )}
 
       <div className="rounded-[var(--radius-card)] bg-[var(--surface-1)] px-4 py-2">
         {!filtered ? (
           <div className="py-6 text-center text-xs text-[var(--text-muted)]">Loading…</div>
         ) : filtered.length === 0 ? (
           <div className="py-6 text-center text-xs text-[var(--text-muted)]">
-            {filter === 'All' ? 'No devices found.' : `No devices tagged “${filter}”.`}
+            {(() => {
+              const clauses = [
+                filter !== 'All' && `tagged "${filter}"`,
+                effectiveNetworkFilter !== 'All' && `on ${effectiveNetworkFilter}`,
+              ].filter(Boolean);
+              return clauses.length === 0 ? 'No devices found.' : `No devices ${clauses.join(' and ')}.`;
+            })()}
           </div>
         ) : viewMode === 'table' ? (
           <div className="overflow-x-auto">
