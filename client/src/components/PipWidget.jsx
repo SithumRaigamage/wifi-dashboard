@@ -1,19 +1,53 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ExternalLink, Wifi, ArrowDown, ArrowUp, X } from 'lucide-react';
 import { Button } from './ui/primitives.jsx';
-import { toMbps, fmtMbps } from '../lib/utils.js';
+import { toMbps, fmtMbps, escapeHtml } from '../lib/utils.js';
 
 export function PipWidgetButton({ live }) {
   const [pipActive, setPipActive] = useState(false);
   const [showModalFallback, setShowModalFallback] = useState(false);
+
+  // The PIP window's 1s update loop outlives the render that created it, so
+  // it must read *current* live data through a ref, not close over the
+  // `live` value from the moment the window opened (which never changes on
+  // its own — the window was showing frozen numbers forever after opening).
+  const liveRef = useRef(live);
+  useEffect(() => {
+    liveRef.current = live;
+  }, [live]);
+
+  const pipWinRef = useRef(null);
+  const intervalRef = useRef(null);
+
+  const closePip = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    const win = pipWinRef.current;
+    pipWinRef.current = null;
+    if (win && !win.closed) win.close(); // triggers 'pagehide' -> closePip again, harmless (both refs already cleared)
+    setPipActive(false);
+  };
+
+  // Previously only the PIP window's own 'pagehide' (the user manually
+  // closing it) cleared the interval — if this component's tree unmounted
+  // instead (e.g. navigating away) while PIP was open, the interval kept
+  // firing forever into a closure over a container the app no longer
+  // controlled. Close/clear on our own unmount too.
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (pipWinRef.current && !pipWinRef.current.closed) pipWinRef.current.close();
+    };
+  }, []);
 
   const isPipSupported = typeof window !== 'undefined' && 'documentPictureInPicture' in window;
 
   const togglePip = async () => {
     if (isPipSupported) {
       if (window.documentPictureInPicture.window) {
-        window.documentPictureInPicture.window.close();
-        setPipActive(false);
+        closePip();
         return;
       }
       try {
@@ -46,10 +80,16 @@ export function PipWidgetButton({ live }) {
         pipWin.document.body.className = 'bg-zinc-950 text-white font-sans p-4 m-0 select-none overflow-hidden';
 
         const updatePipDom = () => {
-          const down = fmtMbps(toMbps(live.throughput?.rxSec));
-          const up = fmtMbps(toMbps(live.throughput?.txSec));
-          const ms = live.latency?.latencyMs != null ? Math.round(live.latency.latencyMs) : '—';
-          const ssid = live.wifi?.ssid || 'WiFi';
+          // Read through the ref, not the `live` closed over when this
+          // function was created — this runs on a 1s interval that outlives
+          // the render that created it, so a stale prop reference would
+          // otherwise freeze the PIP window's numbers at whatever they were
+          // the instant it opened.
+          const current = liveRef.current;
+          const down = fmtMbps(toMbps(current.throughput?.rxSec));
+          const up = fmtMbps(toMbps(current.throughput?.txSec));
+          const ms = current.latency?.latencyMs != null ? Math.round(current.latency.latencyMs) : '—';
+          const ssid = escapeHtml(current.wifi?.ssid || 'WiFi');
 
           container.innerHTML = `
             <div style="font-family: system-ui, sans-serif;">
@@ -74,11 +114,9 @@ export function PipWidgetButton({ live }) {
         updatePipDom();
         setPipActive(true);
 
-        const interval = setInterval(updatePipDom, 1000);
-        pipWin.addEventListener('pagehide', () => {
-          clearInterval(interval);
-          setPipActive(false);
-        });
+        pipWinRef.current = pipWin;
+        intervalRef.current = setInterval(updatePipDom, 1000);
+        pipWin.addEventListener('pagehide', closePip);
       } catch {
         setShowModalFallback(true);
       }

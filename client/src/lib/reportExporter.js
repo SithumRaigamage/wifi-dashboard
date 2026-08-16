@@ -1,21 +1,5 @@
 import { calculateHealthScore } from './signal.js';
-
-// Every value interpolated into the HTML template below ultimately traces
-// back to network data (SSID, DHCP hostname, vendor string, ...) that a
-// device on the LAN controls — a malicious/compromised device could set its
-// hostname to an HTML/script payload that would otherwise execute when this
-// report is opened in a browser. Escape everything unconditionally rather
-// than deciding field-by-field what's "safe" (a decision that's easy to get
-// wrong today and easier still to get wrong when a field is added later).
-function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[ch]);
-}
+import { escapeHtml } from './utils.js';
 
 export function generateReportHtml(live = {}) {
   const health = calculateHealthScore(live);

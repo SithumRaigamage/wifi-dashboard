@@ -5,6 +5,21 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+// Escapes a value for safe interpolation into an HTML string (innerHTML,
+// generated report markup, ...). Anything derived from network data - an
+// SSID, a device hostname/vendor - is chosen by whoever configured that
+// device, not by this app, so it has to be treated as untrusted before it
+// ever reaches raw HTML.
+export function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[ch]);
+}
+
 // Convert bytes/sec to Mbps (number), for chart values + metric cards.
 export function toMbps(bytesPerSec) {
   if (bytesPerSec == null) return null;
