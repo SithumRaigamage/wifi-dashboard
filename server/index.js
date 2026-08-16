@@ -30,6 +30,7 @@ import { logEvent, listEvents, pruneEvents } from './lib/events.js';
 import { getSettings, updateSettings } from './lib/settings.js';
 import { sendAlertEmail, sendTestEmail } from './lib/email.js';
 import { detectRogueAccessPoints } from './lib/security.js';
+import { createBandwidthHogTracker } from './lib/bandwidthTracker.js';
 
 
 const PORT = process.env.PORT || 4000;
@@ -459,6 +460,10 @@ const ROGUE_AP_COOLDOWN_MS = 15 * 60 * 1000;
 const rogueApCooldown = createCooldown(ROGUE_AP_COOLDOWN_MS);
 const rogueApKey = (rogue) => `${rogue.ssid}:${rogue.bssid}`;
 
+// US-23: sustained-high-throughput alerting for this host's own usage — see
+// bandwidthTracker.js for why this can't be true per-LAN-device attribution.
+const bandwidthHogTracker = createBandwidthHogTracker();
+
 async function handleDevices(data) {
   latest.devices = data;
   broadcast('devices', data);
@@ -536,6 +541,21 @@ function startLoops() {
       const data = await getThroughput();
       latest.throughput = data;
       broadcast('throughput', data);
+
+      const s = getSettings();
+      const totalMbps = ((data.rxSec ?? 0) + (data.txSec ?? 0)) * 8 / 1e6; // bytes/sec -> combined Mbps
+      const hog = bandwidthHogTracker.check(totalMbps, {
+        thresholdMbps: s.bandwidthHogMbps,
+        sustainedMs: s.bandwidthHogMinutes * 60 * 1000,
+      });
+      if (hog) {
+        await emitEvent({
+          kind: 'bandwidth-hog',
+          severity: 'warning',
+          message: `This machine has sustained ${hog.totalMbps} Mbps combined throughput for over ${s.bandwidthHogMinutes} minutes`,
+          meta: hog,
+        });
+      }
     },
     () => getSettings().throughputInterval,
     'throughput'
