@@ -6,6 +6,7 @@ import { BssidInspector } from '../components/BssidInspector.jsx';
 import { SnrChart } from '../components/SnrChart.jsx';
 import { BandSteeringAnalyzer } from '../components/BandSteeringAnalyzer.jsx';
 import { RouterSecurityScan } from '../components/RouterSecurityScan.jsx';
+import { UpnpAudit } from '../components/UpnpAudit.jsx';
 import { latencyVariant } from '../lib/signal.js';
 import { downloadDiagnosticReport } from '../lib/reportExporter.js';
 
@@ -71,6 +72,7 @@ export function Diagnostics({ live }) {
       <SnrChart live={live} />
       <BandSteeringAnalyzer devices={live.devices} />
       <RouterSecurityScan />
+      <UpnpAudit />
       <ChannelChart />
       <Traceroute />
     </div>

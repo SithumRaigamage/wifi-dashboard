@@ -18,6 +18,7 @@ import { getDnsTiming } from './collectors/dns.js';
 import { runTraceroute } from './collectors/traceroute.js';
 import { scanPorts } from './collectors/portScanner.js';
 import { scanRouterAdminPortal, getDefaultGatewayIp } from './collectors/routerScanner.js';
+import { auditUpnpPortMappings } from './collectors/upnp.js';
 import { initDb } from './lib/db.js';
 import {
   insertSnapshot,
@@ -259,6 +260,17 @@ app.post('/api/diagnostics/router-scan', async (_req, res) => {
     res.json(await scanRouterAdminPortal(gatewayIp));
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// US-26: on-demand UPnP discovery + active port-forwarding audit. SSDP
+// discovery alone takes ~3s by design (waiting for replies), so this is
+// explicitly on-demand rather than polled.
+app.post('/api/diagnostics/upnp', async (_req, res) => {
+  try {
+    res.json(await auditUpnpPortMappings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
