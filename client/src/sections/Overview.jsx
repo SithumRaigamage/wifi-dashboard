@@ -10,18 +10,21 @@ import { UsageHistory } from '../components/UsageHistory.jsx';
 import { RecentDevices } from '../components/RecentDevices.jsx';
 import { Button } from '../components/ui/primitives.jsx';
 import { Kiosk } from './Kiosk.jsx';
+import { safeStorageGetJSON, safeStorageSetJSON } from '../lib/utils.js';
 
 const DEFAULT_ORDER = ['health', 'metrics', 'throughput', 'latency_speedtest', 'history', 'devices'];
 const LAYOUT_KEY = 'wifi-dashboard.overview-layout';
 
 function getStoredOrder() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(LAYOUT_KEY));
-    if (Array.isArray(stored) && stored.length === DEFAULT_ORDER.length) return stored;
-  } catch {
-    /* fallback to default */
-  }
-  return DEFAULT_ORDER;
+  const stored = safeStorageGetJSON(LAYOUT_KEY, null);
+  // Matching length alone isn't enough — a stale value from a removed/renamed
+  // widget could coincidentally have the right length but the wrong keys,
+  // producing missing or duplicated cards. Require the exact same key set.
+  const isValid =
+    Array.isArray(stored) &&
+    stored.length === DEFAULT_ORDER.length &&
+    DEFAULT_ORDER.every((k) => stored.includes(k));
+  return isValid ? stored : DEFAULT_ORDER;
 }
 
 export function Overview({ live, onNavigate }) {
@@ -45,11 +48,7 @@ export function Overview({ live, onNavigate }) {
   } = live;
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify(cardOrder));
-    } catch {
-      /* ignore */
-    }
+    safeStorageSetJSON(LAYOUT_KEY, cardOrder);
   }, [cardOrder]);
 
   const moveCard = (idx, direction) => {

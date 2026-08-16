@@ -1,21 +1,15 @@
 // audioNotifier.js — Web Audio API synthesizer for alert audio cues.
 
+import { safeStorageGet, safeStorageSet } from './utils.js';
+
 const SOUND_KEY = 'wifi-dashboard.sound';
 
 export function isAudioEnabled() {
-  try {
-    return localStorage.getItem(SOUND_KEY) === 'true';
-  } catch {
-    return false;
-  }
+  return safeStorageGet(SOUND_KEY) === 'true';
 }
 
 export function setAudioEnabled(enabled) {
-  try {
-    localStorage.setItem(SOUND_KEY, String(enabled));
-  } catch {
-    /* ignore */
-  }
+  safeStorageSet(SOUND_KEY, String(enabled));
 }
 
 let audioCtx = null;

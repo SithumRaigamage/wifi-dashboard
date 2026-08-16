@@ -1,15 +1,12 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Upload, Trash2, MapPin, Sliders, Layers, Info } from 'lucide-react';
 import { Card, SectionHeader, Button, Badge } from '../components/ui/primitives.jsx';
+import { safeStorageGetJSON, safeStorageSetJSON } from '../lib/utils.js';
 
 const STORAGE_KEY = 'wifi-dashboard.floorplan';
 
 function getStoredData() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { image: null, pins: [] };
-  } catch {
-    return { image: null, pins: [] };
-  }
+  return safeStorageGetJSON(STORAGE_KEY, { image: null, pins: [] });
 }
 
 export function FloorPlan({ live }) {
@@ -29,11 +26,7 @@ export function FloorPlan({ live }) {
 
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch {
-      /* ignore storage quota */
-    }
+    safeStorageSetJSON(STORAGE_KEY, data);
   }, [data]);
 
   const handleImageUpload = (e) => {

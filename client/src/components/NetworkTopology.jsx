@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Router, Laptop, ShieldCheck, AlertTriangle, HelpCircle, X } from 'lucide-react';
+import { Router, ShieldCheck, AlertTriangle, HelpCircle, X } from 'lucide-react';
 import { Card, Badge } from './ui/primitives.jsx';
 import { getDeviceMeta, toggleDeviceTrust, setDeviceName } from '../lib/deviceStore.js';
 import { autoName, isGatewayIp, deviceIcon } from '../lib/deviceMeta.js';
@@ -184,7 +184,7 @@ export function NetworkTopology({ devices = [], selfIp }) {
           <div className="absolute bottom-3 left-3 right-3 p-4 rounded-xl bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-700 shadow-xl backdrop-blur flex items-center justify-between gap-4 z-10">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
-                {selectedDevice.isGateway ? <Router size={20} /> : <Laptop size={20} />}
+                <selectedDevice.Icon size={20} />
               </div>
               <div>
                 <div className="flex items-center gap-2">

@@ -1,5 +1,7 @@
 // i18n.js — Internationalization translations and language store.
 
+import { safeStorageGet, safeStorageSet } from './utils.js';
+
 const LANG_KEY = 'wifi-dashboard.lang';
 
 const TRANSLATIONS = {
@@ -74,19 +76,11 @@ const TRANSLATIONS = {
 };
 
 export function getLanguage() {
-  try {
-    return localStorage.getItem(LANG_KEY) || 'en';
-  } catch {
-    return 'en';
-  }
+  return safeStorageGet(LANG_KEY, 'en');
 }
 
 export function setLanguage(lang) {
-  try {
-    localStorage.setItem(LANG_KEY, lang);
-  } catch {
-    /* ignore */
-  }
+  safeStorageSet(LANG_KEY, lang);
 }
 
 export function t(key) {

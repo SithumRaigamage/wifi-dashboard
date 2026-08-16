@@ -20,6 +20,44 @@ export function escapeHtml(value) {
   })[ch]);
 }
 
+// Safe localStorage helpers — several files (device names/tags, theme/
+// language prefs, floor-plan data, dashboard layout, sound setting, ...) each
+// need the same "storage might be disabled (private browsing / quota) or the
+// stored value might be corrupt" handling. One place instead of five
+// near-identical try/catch copies.
+export function safeStorageGet(key, fallback = null) {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function safeStorageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage full/disabled — value just won't persist */
+  }
+}
+
+export function safeStorageGetJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw == null ? fallback : JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+export function safeStorageSetJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage full/disabled, or value not serializable — won't persist */
+  }
+}
+
 // Convert bytes/sec to Mbps (number), for chart values + metric cards.
 export function toMbps(bytesPerSec) {
   if (bytesPerSec == null) return null;

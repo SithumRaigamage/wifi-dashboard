@@ -2,24 +2,18 @@
 // The design spec keeps friendly names + tags local (not on the server), keyed
 // by MAC so they survive IP changes.
 
+import { safeStorageGetJSON, safeStorageSetJSON } from './utils.js';
+
 const KEY = 'wifi-dashboard.devices';
 
 export const TAGS = ['Work', 'Personal', 'IoT', 'Guest'];
 
 function readAll() {
-  try {
-    return JSON.parse(localStorage.getItem(KEY)) || {};
-  } catch {
-    return {};
-  }
+  return safeStorageGetJSON(KEY, {});
 }
 
 function writeAll(map) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(map));
-  } catch {
-    /* storage full / disabled — names just won't persist */
-  }
+  safeStorageSetJSON(KEY, map);
 }
 
 export function getDeviceMeta(mac) {
