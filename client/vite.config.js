@@ -33,18 +33,19 @@ export default defineConfig({
         ws: true,
         configure: (proxy) => {
           proxy.on('error', (err) => {
-            if (err.code === 'EPIPE' || err.code === 'ECONNRESET') return;
+            if (err.code === 'EPIPE' || err.code === 'ECONNRESET' || err.message?.includes('EPIPE')) return;
             onError(err);
           });
           proxy.on('proxyReqWs', (_proxyReq, _req, socket) => {
             if (socket) {
               socket.on('error', (err) => {
-                if (err.code === 'EPIPE' || err.code === 'ECONNRESET') return;
+                if (err.code === 'EPIPE' || err.code === 'ECONNRESET' || err.message?.includes('EPIPE')) return;
               });
             }
           });
         },
       },
+
     },
   },
 });

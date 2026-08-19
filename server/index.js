@@ -16,6 +16,9 @@ import { runSpeedTest } from './collectors/speedtest.js';
 import { getChannelCongestion } from './collectors/channels.js';
 import { getDnsTiming } from './collectors/dns.js';
 import { runTraceroute } from './collectors/traceroute.js';
+import { scanPorts } from './collectors/portScanner.js';
+import { scanRouterAdminPortal, getDefaultGatewayIp } from './collectors/routerScanner.js';
+import { auditUpnpPortMappings } from './collectors/upnp.js';
 import { initDb } from './lib/db.js';
 import {
   insertSnapshot,
@@ -28,6 +31,9 @@ import {
 import { logEvent, listEvents, pruneEvents } from './lib/events.js';
 import { getSettings, updateSettings } from './lib/settings.js';
 import { sendAlertEmail, sendTestEmail } from './lib/email.js';
+import { detectRogueAccessPoints } from './lib/security.js';
+import { createBandwidthHogTracker } from './lib/bandwidthTracker.js';
+
 
 const PORT = process.env.PORT || 4000;
 const log = scoped('server');
@@ -42,6 +48,7 @@ const latest = {
 };
 
 let speedtestRunning = false;
+let devicesScanning = false;
 const HISTORY_INTERVAL = 5000; // persist a snapshot this often
 const DNS_INTERVAL = 30000; // DNS timing is cheap-ish; refresh periodically
 
@@ -173,11 +180,27 @@ app.post('/api/email/test', async (_req, res) => {
 // Diagnostics.
 app.get('/api/diagnostics/channels', async (_req, res) => {
   try {
-    res.json(await getChannelCongestion());
+    const data = await getChannelCongestion();
+    if (data && Array.isArray(data.networks) && latest.wifi) {
+      const rogues = detectRogueAccessPoints(latest.wifi, data.networks);
+      rogueApCooldown.prune();
+      for (const rogue of rogues) {
+        if (!rogueApCooldown.tryFire(rogueApKey(rogue))) continue;
+        await emitEvent({
+          kind: 'rogue-ap-detected',
+          severity: 'warning',
+          message: `${rogue.reason} — could be a mesh/extender node broadcasting the same network name, or a genuine rogue AP`,
+          meta: rogue,
+        });
+      }
+      data.rogueAccessPoints = rogues;
+    }
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 app.get('/api/diagnostics/dns', async (_req, res) => {
   try {
     res.json(await getDnsTiming());
@@ -208,11 +231,54 @@ app.get('/api/status/public', (_req, res) => {
   });
 });
 
+// US-19: on-demand TCP port check for one LAN device (SSH/HTTP/HTTPS/SMB/HTTP-alt).
+// POST (like /api/devices/scan and /api/speedtest/run) rather than GET — this triggers
+// a real TCP scan of another device, and a GET could be fired cross-origin via a plain
+// <img src> with no JS. Also restricted to IPs the dashboard has actually discovered
+// (self + latest arp scan) so it can't be used to sweep arbitrary private addresses.
+app.post('/api/devices/scan-ports', async (req, res) => {
+  const ip = String(req.body?.ip || '').trim();
+  const known =
+    ip === latest.devices?.selfIp || latest.devices?.devices?.some((d) => d.ip === ip);
+  if (!known) return res.status(404).json({ error: 'not a known LAN device' });
+  try {
+    res.json(await scanPorts(ip));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// US-25: on-demand check of the router's own admin portal (HTTP vs HTTPS).
+// POST, matching scan-ports — this fires real HTTP requests. No target param:
+// the gateway is resolved server-side (`route -n get default`) rather than
+// trusting a client-supplied IP, since this endpoint's whole purpose is
+// "scan my own router," not a general scan-anything primitive.
+app.post('/api/diagnostics/router-scan', async (_req, res) => {
+  try {
+    const gatewayIp = await getDefaultGatewayIp();
+    if (!gatewayIp) return res.status(503).json({ error: 'could not resolve default gateway' });
+    res.json(await scanRouterAdminPortal(gatewayIp));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// US-26: on-demand UPnP discovery + active port-forwarding audit. SSDP
+// discovery alone takes ~3s by design (waiting for replies), so this is
+// explicitly on-demand rather than polled.
+app.post('/api/diagnostics/upnp', async (_req, res) => {
+  try {
+    res.json(await auditUpnpPortMappings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Trigger an immediate device rescan on demand.
 app.post('/api/devices/scan', async (_req, res) => {
   try {
-    const data = await getLanDevices({ sweep: true });
-    await handleDevices(data);
+    const data = await runDeviceScan({ sweep: true });
+    if (!data) return res.status(409).json({ error: 'a scan is already running' });
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -265,10 +331,43 @@ function downtimeStat() {
   return { todayMs: downtime.todayMs + ongoing, down: Boolean(downtime.since) };
 }
 
+let lastBssid = null;
+let lastChannel = null;
+
 async function handleWifi(data) {
   latest.wifi = data;
   broadcast('wifi', data);
   const s = getSettings();
+
+  // Roaming / Access Point Handover & DFS Radar Hop detection
+  if (data.connected) {
+    const isDfsChannel = (ch) => ch >= 52 && ch <= 144;
+    if (lastChannel && isDfsChannel(lastChannel) && data.channel && !isDfsChannel(data.channel)) {
+      await emitEvent({
+        kind: 'dfs-radar-hop',
+        severity: 'warning',
+        message: `DFS Radar interference detected! AP hopped from DFS Ch ${lastChannel} to non-DFS Ch ${data.channel}`,
+        meta: { oldChannel: lastChannel, newChannel: data.channel },
+      });
+    } else if (lastBssid && data.bssid && data.bssid !== lastBssid) {
+      await emitEvent({
+        kind: 'wifi-roam',
+        severity: 'info',
+        message: `Wi-Fi roamed to AP ${data.bssid} (${data.band || '5GHz'}, Ch ${data.channel})`,
+        meta: { oldBssid: lastBssid, newBssid: data.bssid, channel: data.channel, band: data.band },
+      });
+    } else if (lastChannel && data.channel && data.channel !== lastChannel && !data.bssid) {
+      await emitEvent({
+        kind: 'wifi-roam',
+        severity: 'info',
+        message: `Wi-Fi switched channel to ${data.channel} (${data.band || ''})`,
+        meta: { oldChannel: lastChannel, newChannel: data.channel, band: data.band },
+      });
+    }
+    lastBssid = data.bssid || null;
+    lastChannel = data.channel || null;
+  }
+
 
   // Connect/disconnect edge detection + downtime accounting.
   if (!data.connected && alertState.connected) {
@@ -289,6 +388,7 @@ async function handleWifi(data) {
       });
     }
   }
+
 
   // Low-signal threshold (edge-triggered).
   if (data.rssi != null) {
@@ -341,6 +441,57 @@ async function handleLatency(data) {
 }
 
 let devicesPrimed = false;
+
+// Shared by any alert whose underlying condition can legitimately persist for
+// a long time (a mesh AP rebroadcasting one SSID on several BSSIDs, a
+// proxy-ARP device answering for several IPs, ...) so it doesn't re-fire every
+// single poll cycle it's still true. `prune()` must be called periodically —
+// without it, a long-running server accumulates one permanent entry per key
+// it has ever seen, growing unbounded over weeks.
+function createCooldown(windowMs) {
+  const lastFiredAt = new Map(); // key -> timestamp
+  return {
+    tryFire(key) {
+      const last = lastFiredAt.get(key);
+      if (last && Date.now() - last < windowMs) return false;
+      lastFiredAt.set(key, Date.now());
+      return true;
+    },
+    prune() {
+      const cutoff = Date.now() - windowMs;
+      for (const [key, ts] of lastFiredAt) {
+        if (ts < cutoff) lastFiredAt.delete(key);
+      }
+    },
+  };
+}
+
+// US-20: some networks legitimately have one MAC answer for multiple IPs (mesh
+// APs and proxy-ARP setups do this routinely), so "danger, right now" on every
+// 45s scan would be constant false-alarm noise.
+const ARP_WARNING_COOLDOWN_MS = 15 * 60 * 1000;
+const arpWarningCooldown = createCooldown(ARP_WARNING_COOLDOWN_MS);
+
+function arpWarningKey(w) {
+  return w.type === 'mac-multiple-ips'
+    ? `mac-multiple-ips:${w.mac}:${[...w.ips].sort().join(',')}`
+    // Sort the two MACs so an IP flapping A->B->A->B cools down as one
+    // recurring situation instead of two keys that alternate and never settle.
+    : `ip-mac-conflict:${w.ip}:${[w.mac, w.previousMac].sort().join(',')}`;
+}
+
+// US-15: same reasoning — a home with 2+ APs/mesh nodes broadcasting one SSID
+// on different BSSIDs for seamless roaming is a completely standard, common
+// setup, not an anomaly, so this needs the same treatment as the ARP case
+// above rather than firing "danger" on every Diagnostics page visit.
+const ROGUE_AP_COOLDOWN_MS = 15 * 60 * 1000;
+const rogueApCooldown = createCooldown(ROGUE_AP_COOLDOWN_MS);
+const rogueApKey = (rogue) => `${rogue.ssid}:${rogue.bssid}`;
+
+// US-23: sustained-high-throughput alerting for this host's own usage — see
+// bandwidthTracker.js for why this can't be true per-LAN-device attribution.
+const bandwidthHogTracker = createBandwidthHogTracker();
+
 async function handleDevices(data) {
   latest.devices = data;
   broadcast('devices', data);
@@ -355,8 +506,38 @@ async function handleDevices(data) {
         meta: d,
       });
     }
+    // US-20: duplicate IP / one-MAC-many-IPs — a possible ARP-spoof signature,
+    // but also a routine pattern on mesh/proxy-ARP networks, so it's a warning
+    // to investigate rather than a confirmed attack.
+    arpWarningCooldown.prune();
+    for (const w of data.arpSpoofWarnings ?? []) {
+      if (!arpWarningCooldown.tryFire(arpWarningKey(w))) continue;
+
+      const others = w.otherClaimants?.length ? ` (and ${w.otherClaimants.length} more recently)` : '';
+      const message =
+        w.type === 'mac-multiple-ips'
+          ? `MAC ${w.mac} is answering for multiple IPs (${w.ips.join(', ')}) — could be ARP spoofing, or a mesh/proxy-ARP device`
+          : `IP ${w.ip} was claimed by ${w.previousMac}${others} moments ago, now by ${w.mac} — possible duplicate-IP / ARP spoofing`;
+      await emitEvent({ kind: 'arp-spoof-warning', severity: 'warning', message, meta: w });
+    }
   }
   devicesPrimed = true;
+}
+
+// Shared by the scheduled devices loop and the manual "rescan now" endpoint so
+// they can never run concurrently — getLanDevices()'s duplicate-IP detection
+// (US-20) reads a pre-scan snapshot and then writes sightings, an invariant
+// that a second, overlapping scan could violate mid-flight.
+async function runDeviceScan({ sweep }) {
+  if (devicesScanning) return null;
+  devicesScanning = true;
+  try {
+    const data = await getLanDevices({ sweep });
+    await handleDevices(data);
+    return data;
+  } finally {
+    devicesScanning = false;
+  }
 }
 
 // --- Polling loops ---------------------------------------------------------
@@ -388,6 +569,21 @@ function startLoops() {
       const data = await getThroughput();
       latest.throughput = data;
       broadcast('throughput', data);
+
+      const s = getSettings();
+      const totalMbps = ((data.rxSec ?? 0) + (data.txSec ?? 0)) * 8 / 1e6; // bytes/sec -> combined Mbps
+      const hog = bandwidthHogTracker.check(totalMbps, {
+        thresholdMbps: s.bandwidthHogMbps,
+        sustainedMs: s.bandwidthHogMinutes * 60 * 1000,
+      });
+      if (hog) {
+        await emitEvent({
+          kind: 'bandwidth-hog',
+          severity: 'warning',
+          message: `This machine has sustained ${hog.totalMbps} Mbps combined throughput for over ${s.bandwidthHogMinutes} minutes`,
+          meta: hog,
+        });
+      }
     },
     () => getSettings().throughputInterval,
     'throughput'
@@ -396,7 +592,7 @@ function startLoops() {
   loop(async () => handleWifi(await getWifiStats()), () => getSettings().wifiInterval, 'wifi');
   loop(async () => handleLatency(await getLatency()), () => getSettings().latencyInterval, 'latency');
   loop(
-    async () => handleDevices(await getLanDevices({ sweep: true })),
+    () => runDeviceScan({ sweep: true }),
     () => getSettings().devicesInterval,
     'devices'
   );

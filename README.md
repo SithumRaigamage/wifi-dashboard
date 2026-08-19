@@ -1,19 +1,21 @@
 # WiFi Monitoring Dashboard
 
 Real-time dashboard for local WiFi / network health on **macOS**: signal strength,
-throughput, latency, and LAN device discovery. Node.js backend + React frontend,
-live updates over WebSocket.
+throughput, latency, LAN device discovery, and wireless security/diagnostics.
+Node.js backend + React frontend, live updates over WebSocket.
 
 ![dashboard light](./docs/dashboard-light.png)
 
-_Light and dark themes (follows the OS, or force with `.light`/`.dark` on `<html>`)._
+_Light and dark themes (follows the OS, or force with a theme class on `<html>`;
+OLED, cyberpunk, and emerald accent themes are also available in Settings)._
 
 ## Status
 
-**Phase 1 (MVP) + Phase 2 + the full design-spec app — complete and working.**
-Everything runs with **no sudo**. The UI is a side-navigation app (flat borderless
-cards, two-weight type, light/dark) with six sections: **Overview · Devices ·
-History · Diagnostics · Alerts · Settings**.
+**Phase 1 (MVP) + Phase 2 + the full design-spec app, plus user stories US-01
+through US-18 — complete and working.** Everything runs with **no sudo**. The UI
+is a side-navigation app (flat borderless cards, two-weight type, light/dark) with
+seven sections: **Overview · Devices · Floor Plan · History · Diagnostics · Alerts
+· Settings** (plus a full-screen Kiosk mode launched from Overview).
 
 | Feature | Source | Status |
 |---|---|---|
@@ -22,18 +24,36 @@ History · Diagnostics · Alerts · Settings**.
 | Latency + packet loss | `ping` (configurable host) | ✅ |
 | LAN devices (IP, MAC, vendor, hostname, LAN RTT quality) | `arp -a` + ping-sweep | ✅ |
 | Speed test (download / upload / ping) | Cloudflare speed endpoints | ✅ |
-| Historical charts (1h / 24h) + hourly rollups | MySQL (`mysql2`) | ✅ |
-| Device naming / tags / first-seen–last-seen | localStorage (names/tags) + SQLite (sightings) | ✅ |
+| Historical charts (1h / 24h) + hourly rollups | MySQL, auto-fallback to embedded SQLite | ✅ |
+| Device naming / tags / first-seen–last-seen + network topology map | localStorage (names/tags) + DB (sightings) | ✅ |
 | Latency heatmap (day-of-week × hour) + CSV export | hourly rollups | ✅ |
 | Channel congestion scan | `system_profiler` nearby-networks parse | ✅ |
 | DNS-lookup vs raw-ping timing | `dns.Resolver` | ✅ |
 | Traceroute on demand | `traceroute` (validated target) | ✅ |
-| Alerts: disconnect / new-device / signal / latency / loss + event log | poll-loop edge detection → SQLite | ✅ |
-| Daily summary + downtime-today | hourly rollups | ✅ |
-| Settings: poll interval, ping host, retention, thresholds, theme, webhook | JSON settings file | ✅ |
+| Alerts: disconnect / new-device / signal / latency / loss / roam / rogue AP / DFS hop + event log | poll-loop edge detection → DB | ✅ |
+| Daily summary + downtime-today + Wi-Fi health score gauge | hourly rollups | ✅ |
+| Settings: poll interval, ping host, retention, thresholds, theme, language, webhook | JSON settings file | ✅ |
 | Slack/Discord push on critical events + public status endpoint | incoming webhook | ✅ |
 | Email alerts on critical events (SMTP) | `nodemailer` | ✅ |
-| Per-device router bandwidth | router admin | ⬜ Phase 3 (stretch) |
+| Interactive floor-plan signal heatmap (upload image, drop pins) | localStorage | ✅ |
+| Kiosk / wall-mount full-screen display mode | client-only overlay | ✅ |
+| Picture-in-picture mini HUD widget | client-only overlay | ✅ |
+| Time-travel history scrubbing slider | `/api/history` | ✅ |
+| Drag-and-drop Overview card layout | localStorage | ✅ |
+| Audio cues for events | Web Audio API | ✅ |
+| Multi-language UI (en / es / de / fr) | `client/src/lib/i18n.js` | ✅ |
+| Wi-Fi roaming / AP handover tracker | channel + BSSID change detection | ✅ |
+| BSSID & beacon detail inspector | `system_profiler` parse | ✅ |
+| Noise floor & SNR graph | RSSI − noise | ✅ |
+| Wi-Fi 6 / 6E / 7 (802.11ax/be) PHY capability identifier | `system_profiler` PHY mode | ✅ |
+| Rogue AP / Evil Twin detector | same-SSID / different-BSSID nearby-network match | ✅ |
+| Distance estimator (path-loss algorithm) | RSSI + frequency | ✅ |
+| DFS radar channel-hop detection log | DFS↔non-DFS channel transition | ✅ |
+| Band steering efficiency analyzer | per-device band distribution | ✅ |
+| Per-device router bandwidth | router admin | ⬜ future (stretch) |
+
+See [docs/user-stories/README.md](./docs/user-stories/README.md) for the full
+US-01–US-52 roadmap (US-01–18 shipped; US-19–52 are specced but not yet built).
 
 ## Run
 
@@ -50,12 +70,12 @@ cd client && npm install && npm run dev
 Then open **http://localhost:5173**. The Vite dev server proxies `/api` and `/ws`
 to the backend, so you only need the one URL.
 
-### Persistence (MySQL)
+### Persistence (MySQL, auto-fallback to SQLite)
 
-History, the event log, and device sightings are stored in **MySQL**. The backend
-**runs without it** — if it can't connect it prints setup instructions and serves
-live metrics with persistence disabled (history/events just stay empty). To enable
-storage:
+History, the event log, and device sightings are stored in a database. The backend
+tries **MySQL** first; if it can't connect, it automatically falls back to an
+embedded **SQLite** file at `server/data/wifi_dashboard.sqlite` — so persistence
+works out-of-the-box with **zero setup**. To use MySQL instead:
 
 ```bash
 # 1. create the database + a least-privilege app user (edit the password first)
@@ -64,7 +84,7 @@ mysql -u root -p < server/sql/init.sql
 # 2. point the server at it
 cp server/.env.example server/.env      # then set DB_PASSWORD (+ optional SMTP_PASS)
 
-# 3. restart the backend — it creates its own tables on boot
+# 3. restart the backend — it creates its own tables on boot, in whichever engine connects
 ```
 
 Connection is configured via `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` /
@@ -113,8 +133,10 @@ Recent macOS (this was built on **26.5.1 "Tahoe"**) changed WiFi access:
 ```text
 server/
   index.js              Express REST + ws WebSocket, poll loops, event detection
+                         (roam / rogue-AP / DFS-hop detection lives here)
   collectors/
-    wifiStats.js        system_profiler parser + networkStats throughput
+    wifiStats.js        system_profiler parser (RSSI, SNR, BSSID, PHY/Wi-Fi-6+7,
+                         nearby networks) + networkStats throughput
     latency.js          ping with rolling packet-loss window (configurable host)
     lanDevices.js       arp parse + ping-sweep (per-host RTT) + reverse-DNS + vendor + sightings
     speedtest.js        Cloudflare-based download / upload / ping
@@ -122,30 +144,38 @@ server/
     dns.js              DNS resolution timing (dns.Resolver)
     traceroute.js       on-demand traceroute, hop list (validated target)
   lib/
-    env.js              loads server/.env (imported first)
-    db.js               MySQL pool + schema; graceful no-persistence fallback
-    ouiVendors.js       small local MAC-prefix → vendor table (no network calls)
-    history.js          snapshots + hourly rollups, heatmap, summary, CSV export
-    events.js           event log (disconnect / new-device / threshold breaches)
-    devices.js          per-MAC first-seen / last-seen / count
-    settings.js         JSON-file settings (thresholds, cadences, toggles, webhook, email)
-    email.js            SMTP alert emails (nodemailer); password from SMTP_PASS
+    env.js            loads server/.env (imported first)
+    db.js             dual MySQL + embedded-SQLite driver, schema, graceful fallback
+    ouiVendors.js     small local MAC-prefix → vendor table (no network calls)
+    vendorLookup.js   macvendors.com lookup + cache (opt-in)
+    security.js       rogue AP / Evil Twin detection (same SSID, different BSSID)
+    history.js        snapshots + hourly rollups, heatmap, summary, CSV export
+    events.js         event log (disconnect / new-device / roam / rogue-AP / threshold breaches)
+    devices.js        per-MAC first-seen / last-seen / count
+    settings.js       JSON-file settings (thresholds, cadences, toggles, webhook, email)
+    email.js          SMTP alert emails (nodemailer); password from SMTP_PASS
+    logger.js         Winston setup (see Logging below)
   sql/init.sql          one-time DB + app-user bootstrap
 
 client/
   src/hooks/useLiveData.js   WebSocket + REST-on-load, rolling buffers, events, settings
-  src/lib/signal.js          shared RSSI / RTT quality thresholds
-  src/lib/deviceStore.js     localStorage MAC → { name, tag }
+  src/lib/signal.js          shared RSSI / RTT quality thresholds + estimateDistance() (path-loss)
+  src/lib/deviceStore.js     localStorage MAC → { name, tag, trusted }
+  src/lib/i18n.js            en/es/de/fr strings + getLanguage/setLanguage
+  src/lib/audioNotifier.js   Web Audio event cues
   src/components/Sidebar.jsx  side navigation (collapses to icons < 768px)
-  src/sections/              Overview, Devices, History, Diagnostics, Alerts, Settings
-  src/components/            Header, MetricCards, charts, Heatmap, ChannelChart,
-                            Traceroute, EventLog, RecentDevices (Tailwind v4, flat UI)
+  src/sections/               Overview, Devices, FloorPlan, History, Diagnostics,
+                              Alerts, Settings, Kiosk (overlay launched from Overview)
+  src/components/             Header, MetricCards, HealthGauge, NetworkTopology,
+                              BssidInspector, SnrChart, BandSteeringAnalyzer, PipWidget,
+                              charts, Heatmap, ChannelChart, Traceroute, EventLog,
+                              RecentDevices (Tailwind v4, flat UI)
 ```
 
 ### WebSocket message schema
 
 ```json
-{ "type": "wifi",       "data": { ... }, "timestamp": "..." }
+{ "type": "wifi",       "data": { "...": "rssi/snr/bssid/phyMode/channel/...", "rogueAccessPoints": [] }, "timestamp": "..." }
 { "type": "throughput", "data": { ... }, "timestamp": "..." }
 { "type": "latency",    "data": { ... }, "timestamp": "..." }
 { "type": "devices",    "data": { ... }, "timestamp": "..." }
@@ -188,14 +218,27 @@ Alerts + Settings:
 ## Design notes
 
 - **Device quality pill** shows each device's **LAN round-trip time** bucketed to
-  Strong/Fair/Weak. There's no per-device WiFi RSSI without router access
-  (Phase 3), so LAN RTT is the honest, locally-measurable proxy.
+  Strong/Fair/Weak. There's no per-device WiFi RSSI without router access, so LAN
+  RTT is the honest, locally-measurable proxy (the distance estimator below is a
+  separate, RSSI-based approximation for your own AP link only).
 - **Speed test** uses Cloudflare's `speed.cloudflare.com` endpoints — no Ookla
   account or extra binary, and no flaky `speedtest-net` dependency.
-- **Themes** follow the OS via `prefers-color-scheme`; force one by adding
-  `class="light"` or `class="dark"` to `<html>`.
+- **Themes** follow the OS via `prefers-color-scheme` by default; force one (light,
+  dark, OLED, cyberpunk, emerald) from Settings, which adds the matching class to
+  `<html>`.
+- **Distance estimate** (Devices/Overview) uses a standard log-distance path-loss
+  formula on RSSI + frequency — a rough estimate, not a substitute for real
+  triangulation.
+- **Rogue AP / Evil Twin detection** flags nearby networks broadcasting your SSID
+  from a different BSSID (optionally with a mismatched security standard); it's a
+  heuristic over `system_profiler`'s nearby-network scan, not a full IDS.
 
-## Next (Phase 3, stretch)
+## Next (stretch)
 
-- Per-device bandwidth via router admin API (OpenWrt / pfSense / documented local
-  APIs only). Skipped for stock ISP routers — fragile and low-value.
+Specced but not yet implemented — see [docs/user-stories/README.md](./docs/user-stories/README.md)
+for the full list (US-19 through US-52): port scanning, ARP-spoof/duplicate-IP
+alerting, device OS fingerprinting, bandwidth-hog tracking, router security
+scanning, ML-based anomaly detection, bufferbloat testing, Telegram/MQTT/Home
+Assistant integrations, and a CLI companion, among others. Per-device bandwidth
+via router admin API (OpenWrt / pfSense / documented local APIs only) is skipped
+for stock ISP routers — fragile and low-value.

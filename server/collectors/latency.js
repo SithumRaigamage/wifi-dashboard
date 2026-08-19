@@ -1,13 +1,13 @@
-// latency.js — ping a reliable host to measure latency + packet loss.
+// latency.js — ping a reliable host to measure latency + packet loss + jitter.
 // Uses the `ping` npm package which wraps the system ping binary.
 
 import ping from 'ping';
 import { getSettings } from '../lib/settings.js';
 
-// Rolling window of recent samples so we can report packet loss over time
-// rather than only per-call (a single ping is loss=0 or 100).
+// Rolling window of recent samples so we can report packet loss and jitter over time.
 const WINDOW = 20;
-const history = [];
+const history = [];     // 1 for alive, 0 for loss
+const rttHistory = [];  // recent successful ping times in ms
 
 export async function getLatency(host = getSettings().pingHost) {
   let alive = false;
@@ -31,11 +31,28 @@ export async function getLatency(host = getSettings().pingHost) {
     ? Math.round(((history.length - received) / history.length) * 100)
     : 0;
 
+  if (time != null) {
+    rttHistory.push(time);
+    if (rttHistory.length > WINDOW) rttHistory.shift();
+  }
+
+  // Jitter calculation: average difference between consecutive ping samples
+  let jitterMs = 0;
+  if (rttHistory.length >= 2) {
+    let diffSum = 0;
+    for (let i = 1; i < rttHistory.length; i++) {
+      diffSum += Math.abs(rttHistory[i] - rttHistory[i - 1]);
+    }
+    jitterMs = Math.round((diffSum / (rttHistory.length - 1)) * 10) / 10;
+  }
+
   return {
     host,
     alive,
     latencyMs: time,
+    jitterMs,   // Jitter variation in ms
     packetLoss, // % over the recent window
     samples: history.length,
   };
 }
+

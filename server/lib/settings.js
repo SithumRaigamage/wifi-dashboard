@@ -31,6 +31,8 @@ export const DEFAULTS = {
   signalFloor: -70, // dBm; below this → signal-low event
   latencyCeiling: 150, // ms; above this → latency-high event
   lossCeiling: 20, // %; above this → packet-loss event
+  bandwidthHogMbps: 50, // sustained combined up+down above this → bandwidth-hog event
+  bandwidthHogMinutes: 15, // how long it has to stay above bandwidthHogMbps first
 
   // Integrations / modes.
   publicStatus: false, // expose /api/status/public read-only summary

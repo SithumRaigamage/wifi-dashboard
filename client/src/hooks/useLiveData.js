@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { playAlertSound } from '../lib/audioNotifier.js';
 
 const MAX_POINTS = 60; // rolling buffer length for live charts
 const MAX_EVENTS = 200;
+
 
 // Single WebSocket connection that dispatches messages by `type` into state.
 // Auto-reconnects with backoff. Also keeps rolling history buffers for charts,
@@ -57,7 +59,26 @@ export function useLiveData() {
         break;
       case 'event':
         setEvents((prev) => [data, ...prev].slice(0, MAX_EVENTS));
+        playAlertSound(data.severity);
+        // Native Web Notification trigger if severity is warning or danger
+        if (
+          typeof window !== 'undefined' &&
+          'Notification' in window &&
+          Notification.permission === 'granted' &&
+          (data.severity === 'warning' || data.severity === 'danger')
+        ) {
+          try {
+            new Notification(`WiFi Alert: ${data.kind.toUpperCase()}`, {
+              body: data.message,
+              icon: '/favicon.ico',
+            });
+          } catch {
+            /* notification blocked */
+          }
+        }
         break;
+
+
       case 'events-cleared':
         setEvents([]);
         break;
@@ -147,10 +168,13 @@ export function useLiveData() {
   }, [handleMessage]);
 
   const rescanDevices = useCallback(async () => {
+    // The backend rejects an overlapping scan (409) rather than queueing it —
+    // report that back so the UI doesn't imply a rescan happened when it didn't.
     try {
-      await fetch('/api/devices/scan', { method: 'POST' });
+      const res = await fetch('/api/devices/scan', { method: 'POST' });
+      return { ok: res.ok, status: res.status };
     } catch {
-      /* backend will also refresh on its own interval */
+      return { ok: false, status: null };
     }
   }, []);
 

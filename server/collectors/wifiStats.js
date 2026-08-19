@@ -12,6 +12,8 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import si from 'systeminformation';
+import { parseChannelValue, parseKeyValueLine } from './airportParse.js';
+import { getDefaultRoute } from './defaultRoute.js';
 
 const execAsync = promisify(exec);
 
@@ -19,24 +21,15 @@ const execAsync = promisify(exec);
 // default route rather than systeminformation's type==='wireless', because the
 // latter can match virtual AP/AWDL interfaces (ap1, awdl0) that carry no
 // real traffic — reading throughput on those returns all zeros.
-let cachedWifiIface = null;
-
 async function getWifiInterface() {
-  if (cachedWifiIface) return cachedWifiIface;
-  try {
-    const { stdout } = await execAsync('route -n get default', { timeout: 3000 });
-    const m = stdout.match(/interface:\s*(\S+)/);
-    cachedWifiIface = m ? m[1] : 'en0';
-  } catch {
-    cachedWifiIface = 'en0';
-  }
-  return cachedWifiIface;
+  return (await getDefaultRoute()).iface;
 }
 
 // Parse the `Current Network Information` block out of system_profiler output.
 function parseAirportData(raw) {
   const result = {
     ssid: null,
+    bssid: null,
     phyMode: null,
     channel: null,
     band: null,
@@ -70,23 +63,23 @@ function parseAirportData(raw) {
     const line = lines[i];
     if (/Other Local Wi-Fi Networks/i.test(line)) break;
 
-    const kv = line.match(/^\s+([\w\s/]+):\s*(.+)$/);
+    const kv = parseKeyValueLine(line);
     if (!kv) continue;
-    const key = kv[1].trim();
-    const val = kv[2].trim();
+    const { key, value: val } = kv;
 
     switch (key) {
+      case 'BSSID':
+        result.bssid = val;
+        break;
       case 'PHY Mode':
         result.phyMode = val;
         break;
+
       case 'Channel': {
-        // e.g. "36 (5GHz, 80MHz)"
-        const cm = val.match(/^(\d+)\s*(?:\(([^,)]+)(?:,\s*([^)]+))?\))?/);
-        if (cm) {
-          result.channel = Number(cm[1]);
-          result.band = cm[2]?.trim() || null;
-          result.channelWidth = cm[3]?.trim() || null;
-        }
+        const { channel, band, channelWidth } = parseChannelValue(val);
+        result.channel = channel;
+        result.band = band;
+        result.channelWidth = channelWidth;
         break;
       }
       case 'Signal / Noise': {
@@ -146,6 +139,7 @@ export async function getWifiStats() {
   return {
     iface,
     ssid: airport.ssid,
+    bssid: airport.bssid,
     connected: airport.rssi != null,
     rssi: airport.rssi,
     noise: airport.noise,
@@ -161,6 +155,7 @@ export async function getWifiStats() {
     security: airport.security,
     error: airport.error || null,
   };
+
 }
 
 // Throughput is cheap and fast — poll this more often than getWifiStats().

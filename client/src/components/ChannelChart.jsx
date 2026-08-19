@@ -91,7 +91,7 @@ export function ChannelChart() {
       <div className="mt-2 text-xs text-[var(--text-muted)]">
         {own != null ? (
           <span>
-            Your network is on channel <span className="text-[var(--text-primary)]">{own}</span>.{' '}
+            Your network is on channel <span className="text-[var(--text-primary)] font-bold">{own}</span>.{' '}
           </span>
         ) : null}
         {fiveGhz.length > 0 && (
@@ -101,6 +101,56 @@ export function ChannelChart() {
         )}
         {data?.error && <span className="text-[var(--text-danger)]">Scan unavailable.</span>}
       </div>
+
+      {/* Channel Optimizer Advice Banner */}
+      {(() => {
+        const candidateChannels = [1, 6, 11];
+        const scores = candidateChannels.map((ch) => {
+          // Weight channel ch and adjacent overlapping channels (+- 1)
+          const weight = (bars.find((b) => b.channel === ch)?.count || 0) * 1.0 +
+            (bars.find((b) => b.channel === ch - 1)?.count || 0) * 0.5 +
+            (bars.find((b) => b.channel === ch + 1)?.count || 0) * 0.5;
+          return { channel: ch, score: weight };
+        });
+
+        scores.sort((a, b) => a.score - b.score);
+        const best = scores[0];
+
+        // This whole card is explicitly scoped to the 2.4GHz band (see the
+        // SectionHeader above), and candidateChannels is only ever 1/6/11 —
+        // the three non-overlapping 2.4GHz channels. Comparing a non-2.4GHz
+        // `own` against those candidates would never match, always showing
+        // "switch your 2.4GHz band" regardless of what band the current
+        // connection is actually on. Checked against the real band tag from
+        // the scan (not just "is the channel number <= 14") since 6GHz PSC
+        // channel numbers can themselves be low (1, 5, 9, 13...) and would
+        // otherwise slip past a channel-number-only check.
+        const ownBand = channels.find((c) => c.channel === own)?.band;
+        if (!data || !own || !ownBand?.startsWith('2')) return null;
+
+        const isBest = own === best.channel;
+
+        return (
+          <div className={`mt-3 p-3 rounded-lg border text-xs flex items-center justify-between ${
+            isBest
+              ? 'bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+              : 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+          }`}>
+            <div>
+              <span className="font-bold uppercase tracking-wider text-[10px] block mb-0.5">
+                {isBest ? 'Optimal Channel' : 'Channel Optimization Recommended'}
+              </span>
+              {isBest ? (
+                <span>Your router is operating on <strong>Channel {own}</strong>, which has minimal interference from nearby access points.</span>
+              ) : (
+                <span>
+                  Consider switching your router's 2.4 GHz band to <strong>Channel {best.channel}</strong> for lower interference.
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </Card>
   );
 }

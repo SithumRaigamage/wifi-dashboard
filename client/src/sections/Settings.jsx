@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Card, SectionHeader, Input, Select, Toggle, Button } from '../components/ui/primitives.jsx';
+import { isAudioEnabled, setAudioEnabled } from '../lib/audioNotifier.js';
+import { getLanguage, setLanguage } from '../lib/i18n.js';
+
+
 
 // One labelled control row inside a settings card.
 function Row({ label, hint, control }) {
@@ -116,6 +120,8 @@ export function Settings({ live, theme, onTheme }) {
   const { settings, saveSettings } = live;
   const [pingHost, setPingHost] = useState('');
   const [webhook, setWebhook] = useState('');
+  const [soundOn, setSoundOn] = useState(isAudioEnabled);
+
 
   useEffect(() => {
     if (settings) {
@@ -142,19 +148,21 @@ export function Settings({ live, theme, onTheme }) {
       <Card className="py-0">
         <Row
           label="Polling interval"
-          hint="How often throughput is sampled."
+          hint="How often throughput & live metrics are sampled."
           control={
             <Select
               value={String(settings.throughputInterval)}
               onChange={(e) => saveSettings({ throughputInterval: Number(e.target.value) })}
             >
+              <option value="500">500 ms (Fast)</option>
               <option value="1000">1 second</option>
-              <option value="2000">2 seconds</option>
+              <option value="2000">2 seconds (Default)</option>
               <option value="5000">5 seconds</option>
-              <option value="10000">10 seconds</option>
+              <option value="10000">10 seconds (Battery Saver)</option>
             </Select>
           }
         />
+
         <Row
           label="Ping target host"
           hint="Host used for latency + packet-loss."
@@ -184,17 +192,54 @@ export function Settings({ live, theme, onTheme }) {
           }
         />
         <Row
+          label="Sound effects"
+          hint="Play audio tone cues on disconnects & severe alert events."
+          control={
+            <Toggle
+              checked={soundOn}
+              onChange={(v) => {
+                setSoundOn(v);
+                setAudioEnabled(v);
+              }}
+            />
+          }
+        />
+        <Row
+          label="Language"
+          hint="Translates the sidebar navigation labels. The rest of the dashboard is English-only for now."
+          control={
+            <Select
+              value={getLanguage()}
+              onChange={(e) => {
+                setLanguage(e.target.value);
+                window.location.reload();
+              }}
+            >
+              <option value="en">English</option>
+              <option value="es">Español (Spanish)</option>
+              <option value="de">Deutsch (German)</option>
+              <option value="fr">Français (French)</option>
+            </Select>
+          }
+        />
+        <Row
           label="Theme"
-          hint="Follows your OS by default."
+          hint="Choose visual theme palette."
           control={
             <Select value={theme} onChange={(e) => onTheme(e.target.value)}>
-              <option value="system">System</option>
+              <option value="system">System Default</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
+              <option value="oled">OLED Pitch Black</option>
+              <option value="cyberpunk">Cyberpunk Neon</option>
+              <option value="emerald">Emerald Forest</option>
             </Select>
           }
         />
       </Card>
+
+
+
 
       <Card className="py-0">
         <Row

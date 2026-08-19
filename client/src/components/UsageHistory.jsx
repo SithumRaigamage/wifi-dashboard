@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { Card, Button } from './ui/primitives.jsx';
-import { toMbps, fmtMbps } from '../lib/utils.js';
+import { History as HistoryIcon, RotateCcw } from 'lucide-react';
+import { Card, Button, Badge } from './ui/primitives.jsx';
+import { toMbps, fmtMbps, fmtDateTime } from '../lib/utils.js';
 
 const RANGES = ['1h', '24h'];
 
@@ -14,6 +15,7 @@ function fmtTick(t, range) {
 export function UsageHistory() {
   const [range, setRange] = useState('1h');
   const [points, setPoints] = useState([]);
+  const [scrubIndex, setScrubIndex] = useState(null);
 
   const load = useCallback(async (r) => {
     try {
@@ -25,9 +27,25 @@ export function UsageHistory() {
     }
   }, []);
 
+  // scrubIndex is a plain index into `points` — if a background refetch
+  // replaced `points` while scrubbing, that same index could land on a
+  // different bucket entirely (the backend buckets relative to "now", so
+  // boundaries shift over time) or go out of bounds. "Time Travel Active" +
+  // the explicit "Live" button to return already imply a frozen snapshot, so
+  // pause the refetch for as long as a scrub selection is active instead of
+  // letting it silently swap the inspected data out from under the user. A
+  // ref (not scrubIndex directly in the effect deps) so each tick reads the
+  // current value without recreating the interval on every scrub drag event.
+  const scrubIndexRef = useRef(scrubIndex);
+  useEffect(() => {
+    scrubIndexRef.current = scrubIndex;
+  }, [scrubIndex]);
+
   useEffect(() => {
     load(range);
-    const id = setInterval(() => load(range), 15000);
+    const id = setInterval(() => {
+      if (scrubIndexRef.current === null) load(range);
+    }, 15000);
     return () => clearInterval(id);
   }, [range, load]);
 
@@ -35,19 +53,42 @@ export function UsageHistory() {
   const data = points.map((p) => ({
     t: p.t,
     total: (toMbps(p.rx) ?? 0) + (toMbps(p.tx) ?? 0),
+    raw: p,
   }));
+
+  const activePoint = scrubIndex !== null && points[scrubIndex] ? points[scrubIndex] : null;
 
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-[13px] font-medium text-[var(--text-secondary)]">Usage history</h2>
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[13px] font-medium text-[var(--text-secondary)]">Usage history</h2>
+          {scrubIndex !== null && (
+            <Badge variant="warning" className="text-[10px] uppercase font-bold tracking-wider">
+              Time Travel Active
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          {scrubIndex !== null && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setScrubIndex(null)}
+              className="text-xs flex items-center gap-1"
+            >
+              <RotateCcw className="h-3 w-3" /> Live
+            </Button>
+          )}
           {RANGES.map((r) => (
             <Button
               key={r}
               size="sm"
               variant="outline"
-              onClick={() => setRange(r)}
+              onClick={() => {
+                setRange(r);
+                setScrubIndex(null);
+              }}
               className={
                 range === r
                   ? 'border-[var(--border-strong)] bg-[var(--surface-2)] text-[var(--text-primary)]'
@@ -120,7 +161,54 @@ export function UsageHistory() {
             </div>
           )}
         </div>
+
+        {/* Time Scrubber Control Bar */}
+        {points.length > 1 && (
+          <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-col gap-2">
+            <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+              <span className="flex items-center gap-1 font-medium">
+                <HistoryIcon size={13} /> Time Travel Scrubber
+              </span>
+              <span>
+                {activePoint ? fmtDateTime(activePoint.t) : 'Drag slider to inspect historical snapshot'}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={points.length - 1}
+              value={scrubIndex ?? points.length - 1}
+              onChange={(e) => setScrubIndex(Number(e.target.value))}
+              className="w-full accent-blue-500 cursor-pointer"
+            />
+
+            {/* Historical Point Details Drawer */}
+            {activePoint && (
+              <div className="mt-1 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border-strong)] grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div>
+                  <span className="text-[var(--text-muted)] block text-[10px]">Download</span>
+                  <span className="font-bold text-[var(--series-download)]">{fmtMbps(toMbps(activePoint.rx))} Mbps</span>
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)] block text-[10px]">Upload</span>
+                  <span className="font-bold text-[var(--series-upload)]">{fmtMbps(toMbps(activePoint.tx))} Mbps</span>
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)] block text-[10px]">Signal RSSI</span>
+                  <span className="font-bold text-[var(--text-primary)]">{activePoint.rssi != null ? `${activePoint.rssi} dBm` : '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--text-muted)] block text-[10px]">Latency / Loss</span>
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {activePoint.latency != null ? `${Math.round(activePoint.latency)}ms` : '—'} · {activePoint.loss ?? 0}% loss
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
     </div>
   );
 }
+
